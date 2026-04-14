@@ -1,97 +1,126 @@
 'use client';
 
 import { motion } from 'framer-motion';
+import { useEffect, useRef } from 'react';
 
 /*
-  Curvy calligraphic V — viewBox "0 0 240 312"
-  Each leg bows outward on the outer edge (leftward for left leg,
-  rightward for right leg) giving a fluid, swash serif feel.
-  Leg width at top ≈ 58 px each. Inner edges are gently concave.
-*/
-const V_PATH =
-  'M 8,4 ' +
-  'C -12,95  32,200  106,298 ' +    // left outer — bows left then sweeps to tip
-  'Q 120,314 134,298 ' +             // rounded outer tip
-  'C 208,200 252,95  232,4  ' +     // right outer — bows right then sweeps up
-  'L 174,4  ' +                      // top of right inner leg
-  'C 170,78  140,176  126,260 ' +   // right inner edge
-  'Q 120,275 114,260 ' +             // rounded inner tip
-  'C 100,176  70,78   66,4  ' +     // left inner edge
-  'Z';
+  Calligraphic cursive V — defined in a 200×250 unit space then normalised
+  to [0-1] for clipPathUnits="objectBoundingBox" so it scales with the
+  container's rendered size.
 
-// Copyright-free Unsplash portraits
-const IMG_LEFT  = 'https://images.unsplash.com/photo-1517841905240-472988babdf9?w=300&h=500&fit=crop&crop=faces&auto=format&q=80';
-const IMG_RIGHT = 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=300&h=500&fit=crop&crop=face&auto=format&q=80';
+  Shape overview (in original 200×250 space, origin offset x=10, y=30):
+    • Left stroke  — thick, outer edge bows far left (like a reversed-C),
+                     inner edge is a gentler inward curve
+    • Right stroke — thinner, sweeps up-right from the bottom tip
+    • Bottom tip   — rounded Q curve
+    • Top-left     — pronounced hook/curl (like a real cursive 'v')
+*/
+const V_CLIP_NORM =
+  // ── top of left stroke (the curl/hook) ──────────────────────
+  'M 0.15,0.04 ' +
+  // outer left edge: hooks hard left at the top, bowls outward, dives to tip
+  'C 0,0.04  0,0.36  0.3,0.6 ' +
+  'C 0.5,0.76  0.55,0.92  0.55,1 ' +
+  // outer tip (rounded)
+  'Q 0.575,1.04  0.6,1 ' +
+  // right outer stroke: sweeps up-right, thinner
+  'C 0.68,0.88  0.82,0.6  0.95,0.12 ' +
+  'C 1,0.04  0.9,0  0.8,0.08 ' +
+  // right inner stroke: going back down toward tip
+  'C 0.72,0.18  0.63,0.44  0.58,0.68 ' +
+  // inner tip (rounded)
+  'Q 0.56,0.76  0.54,0.76 ' +
+  'Q 0.52,0.76  0.51,0.72 ' +
+  // left inner edge: returning up toward the hook
+  'C 0.46,0.56  0.35,0.36  0.25,0.2 ' +
+  'C 0.2,0.12  0.175,0.06  0.15,0.04 Z';
+
+const VIDEO_SRC = '/videos/chat-preview.mp4';
 
 export function VCollage() {
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    let tries = 0;
+    const tryPlay = async () => {
+      try {
+        video.muted = true;
+        await video.play();
+      } catch {
+        if (++tries < 10) setTimeout(tryPlay, 200);
+      }
+    };
+
+    if (video.readyState >= 2) tryPlay();
+    else video.oncanplay = tryPlay;
+  }, []);
+
   return (
-    <motion.div
-      initial={{ opacity: 0, x: -24 }}
-      animate={{ opacity: 1, x: 0 }}
-      transition={{ duration: 0.55, delay: 0.2, ease: 'easeOut' }}
-      className="flex flex-col items-center select-none"
-      aria-hidden="true"
-    >
+    <>
+      {/* SVG that holds the scalable clip-path definition */}
       <svg
-        viewBox="0 0 240 314"
-        width="300"
-        height="393"
-        xmlns="http://www.w3.org/2000/svg"
-        role="img"
-        aria-label="Two people inside a V shape"
+        width="0"
+        height="0"
+        aria-hidden="true"
+        style={{ position: 'absolute', overflow: 'hidden' }}
       >
         <defs>
-          <clipPath id="v-outline">
-            <path d={V_PATH} />
+          <clipPath id="v-cursive-clip" clipPathUnits="objectBoundingBox">
+            <path d={V_CLIP_NORM} />
           </clipPath>
-
-          {/* Left half — splits the two photos at the midpoint */}
-          <clipPath id="v-left-half">
-            <rect x="0" y="0" width="120" height="314" />
-          </clipPath>
-
-          {/* Right half */}
-          <clipPath id="v-right-half">
-            <rect x="120" y="0" width="120" height="314" />
-          </clipPath>
-
-          {/* Drop shadow filter */}
-          <filter id="v-shadow" x="-15%" y="-5%" width="130%" height="115%">
-            <feDropShadow dx="0" dy="6" stdDeviation="12" floodColor="rgba(0,0,0,0.30)" />
-          </filter>
-
-          {/* Centre divider gradient */}
-          <linearGradient id="divider-fade" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%"   stopColor="white" stopOpacity="0.65" />
-            <stop offset="55%"  stopColor="white" stopOpacity="0.35" />
-            <stop offset="100%" stopColor="white" stopOpacity="0.05" />
-          </linearGradient>
         </defs>
-
-        {/* Drop shadow layer */}
-        <path d={V_PATH} fill="rgba(0,0,0,0.15)" filter="url(#v-shadow)" transform="translate(0,5)" />
-
-        {/* Photos clipped to V */}
-        <g clipPath="url(#v-outline)">
-          <image
-            href={IMG_LEFT}
-            x="0" y="0"
-            width="240" height="314"
-            preserveAspectRatio="xMidYMid slice"
-            clipPath="url(#v-left-half)"
-          />
-          <image
-            href={IMG_RIGHT}
-            x="0" y="0"
-            width="240" height="314"
-            preserveAspectRatio="xMidYMid slice"
-            clipPath="url(#v-right-half)"
-          />
-
-          {/* Centre divider */}
-          <rect x="118.5" y="0" width="3" height="314" fill="url(#divider-fade)" />
-        </g>
       </svg>
-    </motion.div>
+
+      <motion.div
+        initial={{ opacity: 0, x: -24 }}
+        animate={{ opacity: 1, x: 0 }}
+        transition={{ duration: 0.55, delay: 0.2, ease: 'easeOut' }}
+        aria-hidden="true"
+        style={{ filter: 'drop-shadow(0px 14px 28px rgba(0,0,0,0.30))' }}
+      >
+        {/* Container — 55 vh tall, aspect ratio matches V's 200:250 space */}
+        <div
+          style={{
+            height: '55vh',
+            aspectRatio: '200 / 250',
+            clipPath: 'url(#v-cursive-clip)',
+            WebkitClipPath: 'url(#v-cursive-clip)',
+            overflow: 'hidden',
+            borderRadius: 0,
+          }}
+        >
+          <video
+            ref={videoRef}
+            muted
+            autoPlay
+            loop
+            playsInline
+            preload="auto"
+            style={{
+              width: '100%',
+              height: '100%',
+              objectFit: 'cover',
+              display: 'block',
+            }}
+          >
+            <source src={VIDEO_SRC} type="video/mp4" />
+          </video>
+
+          {/* Subtle inner gradient overlay */}
+          <div
+            style={{
+              position: 'absolute',
+              inset: 0,
+              background:
+                'linear-gradient(160deg, rgba(255,255,255,0.10) 0%, rgba(0,0,0,0.18) 100%)',
+              pointerEvents: 'none',
+            }}
+          />
+        </div>
+      </motion.div>
+    </>
   );
 }
