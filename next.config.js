@@ -1,12 +1,9 @@
 /** @type {import('next').NextConfig} */
 
-const isProd = process.env.NODE_ENV === 'production';
-const socketUrl = process.env.NEXT_PUBLIC_SOCKET_URL;
-
-if (isProd && !socketUrl) {
-  throw new Error(
-    '[VibeLink] NEXT_PUBLIC_SOCKET_URL is not set.\n' +
-    'Add it in your Vercel project → Settings → Environment Variables.'
+if (process.env.NODE_ENV === 'production' && !process.env.NEXT_PUBLIC_SOCKET_URL) {
+  console.warn(
+    '\n[VibeLink] WARNING: NEXT_PUBLIC_SOCKET_URL is not set.\n' +
+    'Set it in Vercel → Settings → Environment Variables.\n'
   );
 }
 
