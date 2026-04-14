@@ -40,7 +40,9 @@ export function useChat({ mode, interests }: UseChatOptions) {
   useEffect(() => { roomIdRef.current = roomId; }, [roomId]);
   useEffect(() => { localStreamRef.current = localStream; }, [localStream]);
 
-  const socket = getSocket();
+  // Capture the socket once at mount — never recreate during renders.
+  const socketRef = useRef(getSocket());
+  const socket = socketRef.current;
 
   // ── helpers ─────────────────────────────────────────────────────────────────
   function startTimer() {
