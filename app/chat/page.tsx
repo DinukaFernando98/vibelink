@@ -3,15 +3,15 @@
 import { Suspense, useEffect, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowLeft, Flag, Loader2, Wifi, WifiOff, Zap } from 'lucide-react';
+import { ArrowLeft, Flag, Loader2, Wifi, WifiOff, Zap, UserX } from 'lucide-react';
 import { useChat } from '@/hooks/useChat';
 import { MessageList } from '@/components/chat/MessageList';
 import { ChatInput } from '@/components/chat/ChatInput';
 import { VideoPanel } from '@/components/video/VideoPanel';
 import { ChatControls } from '@/components/controls/ChatControls';
+import { ThemeToggle } from '@/components/ui/ThemeToggle';
 import type { ChatMode, ConnectionStatus } from '@/lib/types';
 
-// ── Status helpers ─────────────────────────────────────────────────────────
 const STATUS_LABEL: Record<ConnectionStatus, string> = {
   idle:         'Ready',
   searching:    'Finding someone…',
@@ -20,126 +20,107 @@ const STATUS_LABEL: Record<ConnectionStatus, string> = {
   error:        'Error',
 };
 
-const STATUS_COLOR: Record<ConnectionStatus, string> = {
-  idle:         'bg-slate-500',
+const STATUS_DOT: Record<ConnectionStatus, string> = {
+  idle:         'bg-slate-300 dark:bg-slate-600',
   searching:    'bg-amber-400 animate-pulse',
-  connected:    'bg-green-400',
+  connected:    'bg-green-500',
   disconnected: 'bg-red-400',
   error:        'bg-red-500',
 };
 
-function formatTimer(secs: number) {
-  const m = Math.floor(secs / 60).toString().padStart(2, '0');
-  const s = (secs % 60).toString().padStart(2, '0');
-  return `${m}:${s}`;
+function fmt(s: number) {
+  return `${Math.floor(s / 60).toString().padStart(2, '0')}:${(s % 60).toString().padStart(2, '0')}`;
 }
 
-// ── Inner page (needs Suspense for useSearchParams) ────────────────────────
 function ChatPageContent() {
   const router       = useRouter();
   const searchParams = useSearchParams();
-
-  const mode      = (searchParams.get('mode') ?? 'text') as ChatMode;
-  const rawInt    = searchParams.get('interests') ?? '';
-  const interests = rawInt ? rawInt.split(',').filter(Boolean) : [];
+  const mode         = (searchParams.get('mode') ?? 'text') as ChatMode;
 
   const {
     status, messages, isStrangerTyping,
     localStream, remoteStream, isMuted, isCameraOff,
-    error, connectionTime, partnerInterests,
+    error, connectionTime, partnerLeft,
     startChat, stopChat, nextChat,
     sendMessage, sendTyping, toggleMute, toggleCamera, reportUser,
-  } = useChat({ mode, interests });
+  } = useChat({ mode, interests: [] });
 
-  // Auto-start on mount
   const startedRef = useRef(false);
   useEffect(() => {
-    if (!startedRef.current) {
-      startedRef.current = true;
-      startChat();
-    }
+    if (!startedRef.current) { startedRef.current = true; startChat(); }
     return () => { stopChat(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  function handleBack() {
-    stopChat();
-    router.push('/');
-  }
-
   const isVideoMode = mode === 'video';
 
   return (
-    <div className="h-screen bg-black flex flex-col overflow-hidden">
+    <div className="h-[100dvh] bg-white dark:bg-slate-950 flex flex-col overflow-hidden">
 
       {/* ── Header ────────────────────────────────────────────────────── */}
-      <header className="flex items-center justify-between px-4 py-3 border-b border-white/5 bg-black/60 backdrop-blur-md z-20">
-        {/* Left: back + status */}
-        <div className="flex items-center gap-3">
+      <header className="shrink-0 flex items-center justify-between px-3 py-2.5 border-b border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-950 z-20">
+        <div className="flex items-center gap-2">
           <button
-            onClick={handleBack}
+            onClick={() => { stopChat(); router.push('/'); }}
             aria-label="Back to home"
-            className="p-2 rounded-xl hover:bg-white/5 transition-colors text-slate-500 hover:text-white cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/60"
+            className="p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 active:bg-slate-200 dark:active:bg-slate-700 transition-colors text-slate-500 dark:text-slate-400 cursor-pointer"
           >
             <ArrowLeft className="w-4 h-4" aria-hidden="true" />
           </button>
 
-          {/* Logo */}
-          <div className="flex items-center gap-1.5 mr-2">
-            <div className="w-6 h-6 rounded-lg bg-gradient-to-br from-violet-600 to-cyan-500 flex items-center justify-center">
+          <div className="flex items-center gap-1.5 mr-1">
+            <div className="w-6 h-6 rounded-lg bg-violet-600 flex items-center justify-center">
               <Zap className="w-3 h-3 text-white" aria-hidden="true" />
             </div>
-            <span className="text-sm font-bold gradient-text hidden sm:block">VibeLink</span>
+            <span className="text-sm font-bold text-slate-900 dark:text-white hidden sm:block">VibeLink</span>
           </div>
 
-          {/* Status pill */}
-          <div className="flex items-center gap-2">
-            <span
-              className={`w-2 h-2 rounded-full ${STATUS_COLOR[status]}`}
-              aria-hidden="true"
-            />
-            <span className="text-sm text-slate-400">{STATUS_LABEL[status]}</span>
+          <div className="flex items-center gap-1.5">
+            <span className={`w-2 h-2 rounded-full ${STATUS_DOT[status]}`} aria-hidden="true" />
+            <span className="text-sm text-slate-600 dark:text-slate-400">{STATUS_LABEL[status]}</span>
             {status === 'connected' && connectionTime !== null && (
-              <span className="text-xs text-slate-600 tabular-nums">
-                {formatTimer(connectionTime)}
-              </span>
+              <span className="text-xs text-slate-400 dark:text-slate-500 tabular-nums">{fmt(connectionTime)}</span>
             )}
           </div>
         </div>
 
-        {/* Right: partner interests + report */}
-        <div className="flex items-center gap-2">
-          {status === 'connected' && partnerInterests.length > 0 && (
-            <div className="hidden sm:flex items-center gap-1">
-              {partnerInterests.slice(0, 3).map((tag) => (
-                <span
-                  key={tag}
-                  className="px-2 py-0.5 text-[10px] bg-white/5 border border-white/10 rounded-full text-slate-500"
-                >
-                  {tag}
-                </span>
-              ))}
-            </div>
-          )}
-
+        <div className="flex items-center gap-1">
+          <ThemeToggle />
           <AnimatePresence>
             {status === 'connected' && (
               <motion.button
-                initial={{ opacity: 0, scale: 0.85 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.85 }}
-                onClick={() => reportUser('inappropriate')}
+                initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                onClick={() => reportUser()}
                 aria-label="Report user"
-                title="Report this user"
-                className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-red-400/70 hover:text-red-400 hover:bg-red-400/10 rounded-lg transition-all duration-200 cursor-pointer"
+                className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-red-500 hover:bg-red-50 dark:hover:bg-red-950/40 rounded-lg transition-colors cursor-pointer"
               >
-                <Flag className="w-3 h-3" aria-hidden="true" />
+                <Flag className="w-3.5 h-3.5" aria-hidden="true" />
                 <span className="hidden sm:inline">Report</span>
               </motion.button>
             )}
           </AnimatePresence>
         </div>
       </header>
+
+      {/* ── Partner-left banner (auto-finding next) ───────────────────── */}
+      <AnimatePresence>
+        {partnerLeft && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            className="shrink-0 flex items-center justify-center gap-2 px-4 py-2.5 bg-amber-50 dark:bg-amber-950/40 border-b border-amber-100 dark:border-amber-900/50"
+            role="status"
+            aria-live="polite"
+          >
+            <UserX className="w-3.5 h-3.5 text-amber-500 shrink-0" aria-hidden="true" />
+            <span className="text-xs text-amber-700 dark:text-amber-400">
+              Stranger left — finding next person…
+            </span>
+            <div className="w-3 h-3 rounded-full border border-amber-400 border-t-transparent animate-spin shrink-0" />
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* ── Error banner ─────────────────────────────────────────────── */}
       <AnimatePresence>
@@ -148,7 +129,7 @@ function ChatPageContent() {
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: 'auto' }}
             exit={{ opacity: 0, height: 0 }}
-            className="px-4 py-2.5 bg-red-500/10 border-b border-red-500/20 text-xs text-red-400 text-center"
+            className="shrink-0 px-4 py-2 bg-red-50 dark:bg-red-950/40 border-b border-red-100 dark:border-red-900/50 text-xs text-red-600 dark:text-red-400 text-center"
             role="alert"
           >
             {error}
@@ -156,144 +137,109 @@ function ChatPageContent() {
         )}
       </AnimatePresence>
 
-      {/* ── Main content ─────────────────────────────────────────────── */}
-      <div className="flex-1 flex overflow-hidden min-h-0">
+      {/* ── Main ─────────────────────────────────────────────────────── */}
+      <div className={[
+        'flex-1 min-h-0 overflow-hidden',
+        isVideoMode ? 'flex flex-col sm:flex-row' : 'flex flex-col',
+      ].join(' ')}>
 
-        {/* Video pane (video mode only) */}
+        {/* ── Video pane ───────────────────────────────────────────── */}
         {isVideoMode && (
-          <div className="relative flex-1 bg-[#050508]">
-            {/* Remote video — full pane */}
+          <div className="relative bg-slate-900 shrink-0 h-[42vw] max-h-72 sm:max-h-none sm:h-auto sm:flex-1">
             <VideoPanel
               stream={remoteStream}
               label="Stranger"
               status={status}
               className="absolute inset-0 w-full h-full"
             />
-
-            {/* Local video — PiP */}
-            <motion.div
-              initial={{ opacity: 0, scale: 0.8 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ delay: 0.3, duration: 0.35 }}
-              className="absolute bottom-4 right-4 z-10 w-32 h-[88px] sm:w-44 sm:h-[110px] rounded-2xl overflow-hidden border border-white/10 shadow-2xl shadow-black/60 ring-1 ring-white/5"
-            >
+            {/* Local PiP */}
+            <div className="absolute bottom-2 right-2 z-10
+                            w-[22vw] max-w-[80px] aspect-video
+                            sm:w-28 sm:max-w-none
+                            rounded-xl overflow-hidden border-2 border-white/20 shadow-lg">
               <VideoPanel
                 stream={localStream}
-                muted
-                mirror
+                muted mirror
                 isCameraOff={isCameraOff}
                 status="idle"
                 className="w-full h-full"
               />
-              {/* Local label */}
-              <div className="absolute bottom-1.5 left-2 text-[9px] text-white/40">You</div>
-            </motion.div>
+            </div>
           </div>
         )}
 
-        {/* Chat panel */}
-        <div
-          className={[
-            'flex flex-col bg-[#0a0a0f]',
-            isVideoMode
-              ? 'w-full sm:w-80 border-l border-white/5'
-              : 'flex-1',
-          ].join(' ')}
-        >
-          {/* Messages area */}
-          <div className="flex-1 overflow-y-auto px-3 sm:px-4">
+        {/* ── Chat pane ────────────────────────────────────────────── */}
+        <div className={[
+          'flex flex-col min-h-0 bg-white dark:bg-slate-950',
+          isVideoMode
+            ? 'flex-1 sm:flex-none sm:w-80 border-t border-slate-100 dark:border-slate-800 sm:border-t-0 sm:border-l'
+            : 'flex-1',
+        ].join(' ')}>
+
+          <div className="flex-1 overflow-y-auto px-3 py-3">
             <AnimatePresence mode="wait">
-              {/* Searching state */}
               {status === 'searching' && (
-                <motion.div
-                  key="searching"
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  className="flex flex-col items-center justify-center h-full min-h-[200px] gap-4 py-12"
+                <motion.div key="searching"
+                  initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                  className="flex flex-col items-center justify-center h-full min-h-[160px] gap-3"
                 >
-                  <div className="relative w-16 h-16">
-                    <div className="absolute inset-0 rounded-full border-2 border-white/5" />
-                    <div className="absolute inset-0 rounded-full border-2 border-violet-500/20 border-t-violet-500 animate-spin" />
-                    <div className="absolute inset-2 rounded-full border border-white/5 border-t-cyan-500/40 animate-spin" style={{ animationDirection: 'reverse', animationDuration: '1.5s' }} />
-                  </div>
-                  <div className="text-center">
-                    <p className="text-sm text-slate-300">Finding someone to chat with…</p>
-                    <p className="text-xs text-slate-600 mt-1">
-                      {interests.length > 0
-                        ? `Matching on: ${interests.slice(0, 3).join(', ')}`
-                        : 'Looking for anyone online'}
-                    </p>
-                  </div>
+                  <div className="w-10 h-10 rounded-full border-2 border-slate-200 dark:border-slate-700 border-t-violet-500 animate-spin" />
+                  <p className="text-sm text-slate-500 dark:text-slate-400">Looking for someone…</p>
                 </motion.div>
               )}
 
-              {/* Connected but no messages yet */}
               {status === 'connected' && messages.length === 0 && !isStrangerTyping && (
-                <motion.div
-                  key="connected-empty"
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0 }}
-                  className="flex flex-col items-center justify-center h-full min-h-[200px] gap-3 py-12"
+                <motion.div key="connected-empty"
+                  initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                  className="flex flex-col items-center justify-center h-full min-h-[160px] gap-2"
                 >
-                  <div className="w-10 h-10 rounded-full bg-green-500/15 flex items-center justify-center">
-                    <Wifi className="w-5 h-5 text-green-400" aria-hidden="true" />
+                  <div className="w-9 h-9 rounded-full bg-green-50 dark:bg-green-950/40 flex items-center justify-center">
+                    <Wifi className="w-4 h-4 text-green-500" aria-hidden="true" />
                   </div>
-                  <div className="text-center">
-                    <p className="text-sm text-slate-300">Connected!</p>
-                    <p className="text-xs text-slate-600 mt-1">Say hello to break the ice</p>
-                  </div>
+                  <p className="text-sm text-slate-500 dark:text-slate-400">Connected — say hello!</p>
                 </motion.div>
               )}
 
-              {/* Disconnected */}
-              {status === 'disconnected' && (
-                <motion.div
-                  key="disconnected"
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0 }}
-                  className="flex flex-col items-center justify-center min-h-[200px] gap-4 py-12"
+              {status === 'disconnected' && !partnerLeft && (
+                <motion.div key="disconnected"
+                  initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                  className="flex flex-col items-center justify-center h-full min-h-[160px] gap-3"
                 >
-                  <div className="w-10 h-10 rounded-full bg-red-500/15 flex items-center justify-center">
-                    <WifiOff className="w-5 h-5 text-red-400" aria-hidden="true" />
+                  <div className="w-9 h-9 rounded-full bg-red-50 dark:bg-red-950/40 flex items-center justify-center">
+                    <WifiOff className="w-4 h-4 text-red-400" aria-hidden="true" />
                   </div>
-                  <div className="text-center">
-                    <p className="text-sm text-slate-300">Stranger disconnected</p>
-                    <p className="text-xs text-slate-600 mt-1">Press Next to find someone new</p>
-                  </div>
+                  <p className="text-sm text-slate-500 dark:text-slate-400">Stranger disconnected</p>
                   <button
                     onClick={nextChat}
-                    className="px-5 py-2 bg-gradient-to-r from-violet-600 to-cyan-500 text-white text-sm rounded-xl hover:from-violet-500 hover:to-cyan-400 transition-all duration-200 cursor-pointer shadow-lg shadow-violet-500/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/60"
+                    className="px-4 py-2 bg-violet-600 hover:bg-violet-500 text-white text-sm font-medium rounded-xl transition-colors cursor-pointer"
                   >
                     Find next stranger
                   </button>
                 </motion.div>
               )}
 
-              {/* Idle */}
               {status === 'idle' && (
-                <motion.div
-                  key="idle"
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  className="flex items-center justify-center min-h-[200px]"
+                <motion.div key="idle"
+                  initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                  className="flex flex-col items-center justify-center h-full min-h-[160px] gap-3"
                 >
-                  <p className="text-sm text-slate-600">Chat ended</p>
+                  <p className="text-sm text-slate-400 dark:text-slate-500">Chat ended</p>
+                  <button
+                    onClick={nextChat}
+                    className="px-4 py-2 bg-violet-600 hover:bg-violet-500 text-white text-sm font-medium rounded-xl transition-colors cursor-pointer"
+                  >
+                    Start new chat
+                  </button>
                 </motion.div>
               )}
             </AnimatePresence>
 
-            {/* Messages + typing indicator */}
             {(messages.length > 0 || isStrangerTyping) && (
               <MessageList messages={messages} isTyping={isStrangerTyping} />
             )}
           </div>
 
-          {/* Chat input */}
-          <div className="px-3 pb-2 pt-2 border-t border-white/5 bg-black/20">
+          <div className="shrink-0 px-3 py-2.5 border-t border-slate-100 dark:border-slate-800">
             <ChatInput
               disabled={status !== 'connected'}
               onSend={sendMessage}
@@ -303,7 +249,7 @@ function ChatPageContent() {
         </div>
       </div>
 
-      {/* ── Controls bar ─────────────────────────────────────────────── */}
+      {/* ── Controls ─────────────────────────────────────────────────── */}
       <ChatControls
         mode={mode}
         status={status}
@@ -318,16 +264,13 @@ function ChatPageContent() {
   );
 }
 
-// ── Exported page with Suspense ────────────────────────────────────────────
 export default function ChatPage() {
   return (
-    <Suspense
-      fallback={
-        <div className="h-screen bg-black flex items-center justify-center">
-          <Loader2 className="w-8 h-8 animate-spin text-violet-500" aria-label="Loading" />
-        </div>
-      }
-    >
+    <Suspense fallback={
+      <div className="h-screen bg-white dark:bg-slate-950 flex items-center justify-center">
+        <Loader2 className="w-7 h-7 animate-spin text-violet-500" />
+      </div>
+    }>
       <ChatPageContent />
     </Suspense>
   );

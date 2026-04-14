@@ -1,8 +1,8 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { User, Wifi } from 'lucide-react';
+import { AnimatePresence, motion } from 'framer-motion';
+import { User } from 'lucide-react';
 
 interface VideoPanelProps {
   stream: MediaStream | null;
@@ -15,88 +15,67 @@ interface VideoPanelProps {
 }
 
 export function VideoPanel({
-  stream,
-  label,
-  muted = false,
-  mirror = false,
-  status,
-  className = '',
-  isCameraOff = false,
+  stream, label, muted = false, mirror = false,
+  status, className = '', isCameraOff = false,
 }: VideoPanelProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
-    if (videoRef.current) {
-      videoRef.current.srcObject = stream;
+    const el = videoRef.current;
+    if (!el) return;
+    el.srcObject = stream;
+    if (stream) {
+      // Ensure play on mobile (required after srcObject assignment)
+      el.play().catch(() => {/* autoplay policy — handled by playsInline+muted */});
     }
   }, [stream]);
 
-  const hasStream = !!stream && !isCameraOff;
+  const hasVideo = !!stream && !isCameraOff;
 
   return (
-    <div className={`relative overflow-hidden bg-[#0a0a0f] ${className}`}>
-      {/* Video element */}
+    <div className={`relative overflow-hidden bg-slate-800 ${className}`}>
       <video
         ref={videoRef}
         autoPlay
         playsInline
         muted={muted}
         className={[
-          'w-full h-full object-cover transition-opacity duration-500',
+          'w-full h-full object-cover transition-opacity duration-300',
           mirror ? 'mirror' : '',
-          hasStream ? 'opacity-100' : 'opacity-0',
+          hasVideo ? 'opacity-100' : 'opacity-0',
         ].join(' ')}
         aria-label={label ? `${label}'s video` : 'Video feed'}
       />
 
-      {/* Placeholder when no stream */}
       <AnimatePresence>
-        {!hasStream && (
+        {!hasVideo && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            transition={{ duration: 0.3 }}
-            className="absolute inset-0 flex flex-col items-center justify-center gap-3"
+            className="absolute inset-0 flex flex-col items-center justify-center gap-2"
           >
-            {/* Animated ring */}
             <div className="relative">
-              <div className="w-20 h-20 rounded-full border border-white/10 flex items-center justify-center">
-                <User className="w-9 h-9 text-slate-600" aria-hidden="true" />
+              <div className="w-14 h-14 rounded-full bg-slate-700 flex items-center justify-center">
+                <User className="w-7 h-7 text-slate-500" aria-hidden="true" />
               </div>
               {status === 'searching' && (
-                <div className="absolute inset-0 rounded-full border-2 border-violet-500/40 border-t-violet-500 animate-spin" />
-              )}
-              {status === 'connected' && (
-                <div className="absolute inset-0 rounded-full border-2 border-green-500/30 animate-glow-pulse" />
+                <div className="absolute inset-0 rounded-full border-2 border-slate-600 border-t-violet-400 animate-spin" />
               )}
             </div>
-
-            <p className="text-xs text-slate-600">
-              {status === 'searching'
-                ? 'Connecting…'
-                : status === 'disconnected'
-                ? 'Stranger left'
-                : isCameraOff
-                ? 'Camera off'
-                : 'Waiting for video…'}
+            <p className="text-xs text-slate-500">
+              {status === 'searching' ? 'Connecting…'
+               : status === 'disconnected' ? 'Stranger left'
+               : isCameraOff ? 'Camera off'
+               : 'No video'}
             </p>
           </motion.div>
         )}
       </AnimatePresence>
 
-      {/* Label badge */}
-      {label && (
-        <div className="absolute top-3 left-3 px-2.5 py-1 glass rounded-lg text-xs text-slate-300">
+      {label && hasVideo && (
+        <div className="absolute top-2 left-2 px-2 py-0.5 bg-black/40 rounded-md text-[10px] text-white/80 backdrop-blur-sm">
           {label}
-        </div>
-      )}
-
-      {/* Online indicator */}
-      {status === 'connected' && hasStream && (
-        <div className="absolute top-3 right-3 flex items-center gap-1.5 px-2 py-1 glass rounded-lg">
-          <Wifi className="w-3 h-3 text-green-400" aria-hidden="true" />
-          <span className="text-[10px] text-green-400">Live</span>
         </div>
       )}
     </div>
