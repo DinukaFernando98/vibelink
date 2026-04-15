@@ -3,6 +3,7 @@ const http    = require('http');
 const { Server } = require('socket.io');
 const cors   = require('cors');
 const { v4: uuidv4 } = require('uuid');
+const geoip  = require('geoip-lite');
 
 const app    = express();
 const server = http.createServer(app);
@@ -27,6 +28,8 @@ const videoQueue = [];
 const rooms      = new Map();
 /** socketId → roomId */
 const userRoom   = new Map();
+/** socketId → { country: string, countryCode: string } */
+const userGeo    = new Map();
 /** socketId → number (report count) */
 const reportCount = new Map();
 /** ip → {count, window} */
@@ -83,9 +86,17 @@ function findBestMatch(queue, socketId, interests) {
   return queue.findIndex((u) => u.socketId !== socketId);
 }
 
+// ── Country name lookup ───────────────────────────────────────────────────────
+const COUNTRY_NAMES = new Intl.DisplayNames(['en'], { type: 'region' });
+function getCountryName(code) {
+  try { return COUNTRY_NAMES.of(code) || code; } catch { return code; }
+}
+
 // ── Connection handler ───────────────────────────────────────────────────────
 io.on('connection', (socket) => {
-  const ip = socket.handshake.headers['x-forwarded-for'] || socket.handshake.address;
+  const rawIp = socket.handshake.headers['x-forwarded-for'] || socket.handshake.address;
+  // x-forwarded-for may be a comma-separated list; take the first (client) IP
+  const ip = String(rawIp).split(',')[0].trim();
 
   if (isRateLimited(ip)) {
     socket.emit('error', { message: 'Too many requests. Please wait a moment.' });
@@ -93,7 +104,14 @@ io.on('connection', (socket) => {
     return;
   }
 
-  console.log(`[+] ${socket.id} connected  (${ip})`);
+  // Geo-lookup — falls back gracefully on localhost / private IPs
+  const geo = geoip.lookup(ip);
+  userGeo.set(socket.id, {
+    country:     geo?.country ? geo.country : 'Unknown',
+    countryName: geo?.country ? getCountryName(geo.country) : 'Unknown',
+  });
+
+  console.log(`[+] ${socket.id} connected  (${ip} / ${userGeo.get(socket.id).countryName})`);
 
   // ── join-queue ─────────────────────────────────────────────────────────────
   socket.on('join-queue', ({ mode = 'text', interests = [] }) => {
@@ -119,17 +137,22 @@ io.on('connection', (socket) => {
       userRoom.set(socket.id,       roomId);
       userRoom.set(partner.socketId, roomId);
 
+      const myGeo      = userGeo.get(socket.id)      || { country: 'Unknown', countryName: 'Unknown' };
+      const partnerGeo = userGeo.get(partner.socketId) || { country: 'Unknown', countryName: 'Unknown' };
+
       socket.emit('match-found', {
         roomId,
         isInitiator:      true,
         mode:             safeMode,
         partnerInterests: partner.interests,
+        partnerCountry:   { code: partnerGeo.country, name: partnerGeo.countryName },
       });
       io.to(partner.socketId).emit('match-found', {
         roomId,
         isInitiator:      false,
         mode:             safeMode,
         partnerInterests: safeInterests,
+        partnerCountry:   { code: myGeo.country, name: myGeo.countryName },
       });
 
       console.log(`[~] Room ${roomId}: ${socket.id} <-> ${partner.socketId}`);
@@ -216,6 +239,7 @@ io.on('connection', (socket) => {
     console.log(`[-] ${socket.id} disconnected (${reason})`);
     removeFromQueues(socket.id);
     leaveRoom(socket);
+    userGeo.delete(socket.id);
   });
 });
 

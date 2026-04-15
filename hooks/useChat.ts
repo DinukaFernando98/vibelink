@@ -9,6 +9,7 @@ import type {
   ConnectionStatus,
   MatchFoundPayload,
   Message,
+  PartnerCountry,
 } from '@/lib/types';
 
 interface UseChatOptions {
@@ -31,6 +32,7 @@ export function useChat({ mode, interests }: UseChatOptions) {
   const [error,            setError]           = useState<string | null>(null);
   const [connectionTime,   setConnectionTime]  = useState<number | null>(null);
   const [partnerInterests, setPartnerInterests] = useState<string[]>([]);
+  const [partnerCountry,   setPartnerCountry]  = useState<PartnerCountry | null>(null);
   // Brief flag so the UI can show "Stranger left — finding next…"
   const [partnerLeft,      setPartnerLeft]     = useState(false);
 
@@ -81,6 +83,7 @@ export function useChat({ mode, interests }: UseChatOptions) {
     setRoomId(null);
     roomIdRef.current = null;
     setPartnerInterests([]);
+    setPartnerCountry(null);
     stopTimer();
     tearDownWebRTC();
   }
@@ -177,11 +180,12 @@ export function useChat({ mode, interests }: UseChatOptions) {
   // ── socket events ────────────────────────────────────────────────────────────
   useEffect(() => {
     const onMatchFound = async (payload: MatchFoundPayload) => {
-      const { roomId: rid, isInitiator, mode: matchMode, partnerInterests: pi } = payload;
+      const { roomId: rid, isInitiator, mode: matchMode, partnerInterests: pi, partnerCountry: pc } = payload;
       setRoomId(rid);
       roomIdRef.current = rid;
       setStatus('connected');
       setPartnerInterests(pi ?? []);
+      setPartnerCountry(pc ?? null);
       setPartnerLeft(false);
       startTimer();
 
@@ -264,7 +268,7 @@ export function useChat({ mode, interests }: UseChatOptions) {
   return {
     status, messages, isStrangerTyping, roomId,
     localStream, remoteStream, isMuted, isCameraOff,
-    error, connectionTime, partnerInterests, partnerLeft,
+    error, connectionTime, partnerInterests, partnerCountry, partnerLeft,
     startChat, stopChat, nextChat,
     sendMessage, sendTyping, toggleMute, toggleCamera, reportUser,
   };

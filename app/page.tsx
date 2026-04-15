@@ -3,7 +3,6 @@
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { MessageSquare, Video, Shield, Zap } from 'lucide-react';
-import { ThemeToggle } from '@/components/ui/ThemeToggle';
 import { PeopleGrid } from '@/components/ui/PeopleGrid';
 import { VCollage } from '@/components/ui/VCollage';
 
@@ -15,11 +14,6 @@ export default function LandingPage() {
 
       {/* Faded people grid background — sits behind everything */}
       <PeopleGrid />
-
-      {/* Theme toggle — always on top, anchored to outer container */}
-      <div className="absolute top-4 right-4 z-20">
-        <ThemeToggle />
-      </div>
 
       {/* V collage — left side decoration, lg screens only */}
       <div className="hidden lg:flex absolute left-6 xl:left-12 top-1/2 -translate-y-1/2 z-10">

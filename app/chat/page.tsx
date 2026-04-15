@@ -32,6 +32,14 @@ function fmt(s: number) {
   return `${Math.floor(s / 60).toString().padStart(2, '0')}:${(s % 60).toString().padStart(2, '0')}`;
 }
 
+/** Convert ISO 3166-1 alpha-2 code → flag emoji (e.g. "IN" → "🇮🇳") */
+function toFlag(code: string) {
+  if (!code || code.length !== 2) return '';
+  return [...code.toUpperCase()]
+    .map((c) => String.fromCodePoint(0x1f1e6 + c.charCodeAt(0) - 65))
+    .join('');
+}
+
 function ChatPageContent() {
   const router       = useRouter();
   const searchParams = useSearchParams();
@@ -40,7 +48,7 @@ function ChatPageContent() {
   const {
     status, messages, isStrangerTyping,
     localStream, remoteStream, isMuted, isCameraOff,
-    error, connectionTime, partnerLeft,
+    error, connectionTime, partnerCountry, partnerLeft,
     startChat, stopChat, nextChat,
     sendMessage, sendTyping, toggleMute, toggleCamera, reportUser,
   } = useChat({ mode, interests: [] });
@@ -80,6 +88,12 @@ function ChatPageContent() {
             <span className="text-sm text-slate-600 dark:text-slate-400">{STATUS_LABEL[status]}</span>
             {status === 'connected' && connectionTime !== null && (
               <span className="text-xs text-slate-400 dark:text-slate-500 tabular-nums">{fmt(connectionTime)}</span>
+            )}
+            {status === 'connected' && partnerCountry && partnerCountry.name !== 'Unknown' && (
+              <span className="flex items-center gap-1 text-xs text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-full">
+                <span aria-hidden="true">{toFlag(partnerCountry.code)}</span>
+                {partnerCountry.name}
+              </span>
             )}
           </div>
         </div>
