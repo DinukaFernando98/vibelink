@@ -1,11 +1,14 @@
 'use client';
 
 import { motion } from 'framer-motion';
+import { AlertTriangle } from 'lucide-react';
+import { filterMessage } from '@/lib/profanity';
 import type { Message } from '@/lib/types';
 
 export function ChatMessage({ message }: { message: Message }) {
-  const isMe = message.sender === 'me';
-  const time = new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const isMe   = message.sender === 'me';
+  const time   = new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const { text, flagged } = filterMessage(message.text);
 
   return (
     <motion.div
@@ -24,8 +27,17 @@ export function ChatMessage({ message }: { message: Message }) {
             ? 'bg-violet-600 text-white rounded-2xl rounded-br-sm'
             : 'bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200 rounded-2xl rounded-bl-sm',
         ].join(' ')}>
-          {message.text}
+          {text}
         </div>
+
+        {/* Warning shown below the bubble when profanity was detected */}
+        {flagged && (
+          <div className={`flex items-center gap-1 px-1 ${isMe ? 'justify-end' : 'justify-start'}`}>
+            <AlertTriangle className="w-3 h-3 text-amber-500 shrink-0" aria-hidden="true" />
+            <span className="text-[10px] text-amber-500">Inappropriate language filtered</span>
+          </div>
+        )}
+
         <span className="text-[10px] text-slate-400 dark:text-slate-500 px-1">{time}</span>
       </div>
     </motion.div>
