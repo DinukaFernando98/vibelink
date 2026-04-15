@@ -6,6 +6,8 @@ import { X, Camera, Loader2, Eye, EyeOff } from 'lucide-react';
 import { filterMessage } from '@/lib/profanity';
 import { apiRegister, apiLogin, type UserSession } from '@/lib/auth';
 import { AnimalPicker } from '@/components/ui/AnimalAvatars';
+import { CountryPicker } from '@/components/ui/CountryPicker';
+import { type Country } from '@/lib/countries';
 
 interface AuthModalProps {
   onSuccess: (session: UserSession) => void;
@@ -54,6 +56,7 @@ export function AuthModal({ onSuccess, onClose }: AuthModalProps) {
   const [dob, setDob]             = useState('');
   const [password, setPassword]   = useState('');
   const [showPass, setShowPass]   = useState(false);
+  const [country, setCountry]     = useState<Country | null>(null);
   const [photo, setPhoto]         = useState<string | null>(null);
   const [ageConsent, setAgeCons]  = useState(false);
   const [terms, setTerms]         = useState(false);
@@ -88,7 +91,7 @@ export function AuthModal({ onSuccess, onClose }: AuthModalProps) {
 
     setLoading(true);
     try {
-      const session = await apiRegister({ name: name.trim(), email, dob, password, profilePhoto: photo });
+      const session = await apiRegister({ name: name.trim(), email, dob, password, profilePhoto: photo, countryCode: country?.code ?? null, countryName: country?.name ?? null });
       onSuccess(session);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong.');
@@ -262,6 +265,10 @@ export function AuthModal({ onSuccess, onClose }: AuthModalProps) {
                       {showPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                     </button>
                   </div>
+                </Field>
+
+                <Field label="Country">
+                  <CountryPicker value={country} onChange={setCountry} />
                 </Field>
 
                 <label className="flex items-start gap-2.5 cursor-pointer">

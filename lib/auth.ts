@@ -7,6 +7,8 @@ export interface UserSession {
   email: string;
   dob: string;
   profilePhoto?: string | null;
+  countryCode?: string | null;
+  countryName?: string | null;
   sessionToken: string;
 }
 
@@ -29,7 +31,8 @@ export function clearSession(): void {
 // ── API calls ──────────────────────────────────────────────────────────────────
 
 export async function apiRegister(payload: {
-  name: string; email: string; dob: string; password: string; profilePhoto?: string | null;
+  name: string; email: string; dob: string; password: string;
+  profilePhoto?: string | null; countryCode?: string | null; countryName?: string | null;
 }): Promise<UserSession> {
   const res = await fetch(`${API()}/api/auth/register`, {
     method: 'POST',

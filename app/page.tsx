@@ -3,10 +3,11 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { AnimatePresence, motion } from 'framer-motion';
-import { MessageSquare, Video, Shield, Zap, LogOut, User } from 'lucide-react';
+import { MessageSquare, Video, Shield, Zap, LogOut, User, Users } from 'lucide-react';
 import { PeopleGrid } from '@/components/ui/PeopleGrid';
 import { VCollage } from '@/components/ui/VCollage';
 import { AuthModal } from '@/components/ui/AuthModal';
+import { FriendsDrawer } from '@/components/friends/FriendsDrawer';
 import { getSession, clearSession, type UserSession } from '@/lib/auth';
 
 function toFlag(code: string) {
@@ -21,6 +22,7 @@ export default function LandingPage() {
   const [myCountry, setMyCountry] = useState<{ code: string; name: string } | null>(null);
   const [session, setSession]     = useState<UserSession | null>(null);
   const [authTarget, setAuthTarget] = useState<'text' | 'video' | null>(null);
+  const [friendsOpen, setFriendsOpen] = useState(false);
 
   useEffect(() => {
     setSession(getSession());
@@ -63,19 +65,28 @@ export default function LandingPage() {
           </div>
         )}
         {session && (
-          <div className="flex items-center gap-2 bg-white/90 dark:bg-slate-900/90 backdrop-blur-sm border border-slate-200 dark:border-slate-700 rounded-full pl-2 pr-3 py-1.5 shadow-sm">
-            {session.profilePhoto
-              ? <img src={session.profilePhoto} alt="" className="w-6 h-6 rounded-full object-cover" />
-              : <div className="w-6 h-6 rounded-full bg-violet-100 dark:bg-violet-900 flex items-center justify-center"><User className="w-3.5 h-3.5 text-violet-600" /></div>}
-            <span className="text-xs font-medium text-slate-700 dark:text-slate-300 max-w-[100px] truncate">{session.name}</span>
-            {myCountry && <span className="text-xs" aria-hidden="true">{toFlag(myCountry.code)}</span>}
+          <div className="flex items-center gap-2">
             <button
-              onClick={handleLogout}
-              className="ml-1 p-1 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
-              aria-label="Log out"
+              onClick={() => setFriendsOpen(true)}
+              className="flex items-center gap-1.5 bg-white/90 dark:bg-slate-900/90 backdrop-blur-sm border border-slate-200 dark:border-slate-700 rounded-full px-3 py-1.5 text-xs font-medium text-violet-600 dark:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-900/30 transition-colors cursor-pointer shadow-sm"
             >
-              <LogOut className="w-3.5 h-3.5" />
+              <Users className="w-3.5 h-3.5" />
+              Friends
             </button>
+            <div className="flex items-center gap-2 bg-white/90 dark:bg-slate-900/90 backdrop-blur-sm border border-slate-200 dark:border-slate-700 rounded-full pl-2 pr-3 py-1.5 shadow-sm">
+              {session.profilePhoto
+                ? <img src={session.profilePhoto} alt="" className="w-6 h-6 rounded-full object-cover" />
+                : <div className="w-6 h-6 rounded-full bg-violet-100 dark:bg-violet-900 flex items-center justify-center"><User className="w-3.5 h-3.5 text-violet-600" /></div>}
+              <span className="text-xs font-medium text-slate-700 dark:text-slate-300 max-w-[100px] truncate">{session.name}</span>
+              {myCountry && <span className="text-xs" aria-hidden="true">{toFlag(myCountry.code)}</span>}
+              <button
+                onClick={handleLogout}
+                className="ml-1 p-1 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
+                aria-label="Log out"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+              </button>
+            </div>
           </div>
         )}
       </div>
@@ -145,6 +156,12 @@ export default function LandingPage() {
           />
         )}
       </AnimatePresence>
+
+      {/* Friends drawer */}
+      <FriendsDrawer
+        isOpen={friendsOpen}
+        onClose={() => setFriendsOpen(false)}
+      />
     </div>
   );
 }

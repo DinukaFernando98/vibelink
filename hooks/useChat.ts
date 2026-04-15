@@ -33,6 +33,7 @@ export function useChat({ mode, interests }: UseChatOptions) {
   const [connectionTime,   setConnectionTime]  = useState<number | null>(null);
   const [partnerInterests, setPartnerInterests] = useState<string[]>([]);
   const [partnerCountry,   setPartnerCountry]  = useState<PartnerCountry | null>(null);
+  const [partnerUserId,    setPartnerUserId]   = useState<string | null>(null);
   // Brief flag so the UI can show "Stranger left — finding next…"
   const [partnerLeft,      setPartnerLeft]     = useState(false);
 
@@ -84,6 +85,7 @@ export function useChat({ mode, interests }: UseChatOptions) {
     roomIdRef.current = null;
     setPartnerInterests([]);
     setPartnerCountry(null);
+    setPartnerUserId(null);
     stopTimer();
     tearDownWebRTC();
   }
@@ -186,6 +188,7 @@ export function useChat({ mode, interests }: UseChatOptions) {
       setStatus('connected');
       setPartnerInterests(pi ?? []);
       setPartnerCountry(pc ?? null);
+      setPartnerUserId(payload.partnerUserId ?? null);
       setPartnerLeft(false);
       startTimer();
 
@@ -268,7 +271,7 @@ export function useChat({ mode, interests }: UseChatOptions) {
   return {
     status, messages, isStrangerTyping, roomId,
     localStream, remoteStream, isMuted, isCameraOff,
-    error, connectionTime, partnerInterests, partnerCountry, partnerLeft,
+    error, connectionTime, partnerInterests, partnerCountry, partnerUserId, partnerLeft,
     startChat, stopChat, nextChat,
     sendMessage, sendTyping, toggleMute, toggleCamera, reportUser,
   };

@@ -30,4 +30,5 @@ export interface MatchFoundPayload {
   mode: ChatMode;
   partnerInterests: string[];
   partnerCountry?: PartnerCountry;
+  partnerUserId?: string | null;
 }
