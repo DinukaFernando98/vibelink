@@ -1,19 +1,47 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { MessageSquare, Video, Shield, Zap } from 'lucide-react';
 import { PeopleGrid } from '@/components/ui/PeopleGrid';
 import { VCollage } from '@/components/ui/VCollage';
 
+function toFlag(code: string) {
+  if (!code || code.length !== 2) return '';
+  return [...code.toUpperCase()]
+    .map((c) => String.fromCodePoint(0x1f1e6 + c.charCodeAt(0) - 65))
+    .join('');
+}
+
 export default function LandingPage() {
   const router = useRouter();
+  const [myCountry, setMyCountry] = useState<{ code: string; name: string } | null>(null);
+
+  useEffect(() => {
+    fetch('https://freeipapi.com/api/json')
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.countryCode && d.countryName) {
+          setMyCountry({ code: d.countryCode, name: d.countryName });
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   return (
     <div className="min-h-screen bg-white dark:bg-slate-950 flex flex-col items-center justify-center px-6 relative overflow-hidden">
 
       {/* Faded people grid background — sits behind everything */}
       <PeopleGrid />
+
+      {/* My country — top-right corner */}
+      {myCountry && (
+        <div className="absolute top-4 right-4 z-20 flex items-center gap-1.5 bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm border border-slate-200 dark:border-slate-700 rounded-full px-3 py-1.5 text-xs text-slate-600 dark:text-slate-300 shadow-sm select-none">
+          <span aria-hidden="true">{toFlag(myCountry.code)}</span>
+          <span>{myCountry.name}</span>
+        </div>
+      )}
 
       {/* V collage — left side decoration, lg screens only */}
       <div className="hidden lg:flex absolute left-6 xl:left-12 top-1/2 -translate-y-1/2 z-10">

@@ -3,7 +3,6 @@ const http    = require('http');
 const { Server } = require('socket.io');
 const cors   = require('cors');
 const { v4: uuidv4 } = require('uuid');
-const geoip  = require('geoip-lite');
 
 const app    = express();
 const server = http.createServer(app);
@@ -86,17 +85,61 @@ function findBestMatch(queue, socketId, interests) {
   return queue.findIndex((u) => u.socketId !== socketId);
 }
 
-// ── Country name lookup ───────────────────────────────────────────────────────
-const COUNTRY_NAMES = new Intl.DisplayNames(['en'], { type: 'region' });
-function getCountryName(code) {
-  try { return COUNTRY_NAMES.of(code) || code; } catch { return code; }
+// ── IP geolocation via ip-api.com (free, no key, accurate live data) ─────────
+/** @type {Map<string, {code:string, name:string}>} */
+const geoCache = new Map();
+
+/** Extract the real client IP from socket handshake, stripping proxy layers */
+function getClientIp(socket) {
+  const h = socket.handshake.headers;
+  const raw = h['x-real-ip'] || h['x-forwarded-for'] || socket.handshake.address || '';
+  // x-forwarded-for may be "client, proxy1, proxy2" — take first
+  const ip = String(raw).split(',')[0].trim();
+  // Strip IPv6-mapped IPv4 (::ffff:1.2.3.4 → 1.2.3.4)
+  return ip.replace(/^::ffff:/, '');
+}
+
+/** Returns true for loopback / RFC-1918 addresses that cannot be geolocated */
+function isPrivateIp(ip) {
+  return (
+    !ip ||
+    ip === '127.0.0.1' ||
+    ip === '::1' ||
+    ip.startsWith('10.') ||
+    ip.startsWith('192.168.') ||
+    /^172\.(1[6-9]|2\d|3[01])\./.test(ip)
+  );
+}
+
+/** Look up country for an IP using ip-api.com; results are cached per IP */
+async function lookupCountry(ip) {
+  if (isPrivateIp(ip)) return { code: 'Unknown', name: 'Unknown' };
+
+  const cached = geoCache.get(ip);
+  if (cached) return cached;
+
+  try {
+    const controller = new AbortController();
+    const tid = setTimeout(() => controller.abort(), 2500);
+    const res  = await fetch(
+      `http://ip-api.com/json/${ip}?fields=status,country,countryCode`,
+      { signal: controller.signal }
+    );
+    clearTimeout(tid);
+    const data = await res.json();
+    if (data.status === 'success') {
+      const result = { code: data.countryCode, name: data.country };
+      geoCache.set(ip, result);          // cache indefinitely per session
+      return result;
+    }
+  } catch { /* timeout or network error — fall through */ }
+
+  return { code: 'Unknown', name: 'Unknown' };
 }
 
 // ── Connection handler ───────────────────────────────────────────────────────
-io.on('connection', (socket) => {
-  const rawIp = socket.handshake.headers['x-forwarded-for'] || socket.handshake.address;
-  // x-forwarded-for may be a comma-separated list; take the first (client) IP
-  const ip = String(rawIp).split(',')[0].trim();
+io.on('connection', async (socket) => {
+  const ip = getClientIp(socket);
 
   if (isRateLimited(ip)) {
     socket.emit('error', { message: 'Too many requests. Please wait a moment.' });
@@ -104,14 +147,11 @@ io.on('connection', (socket) => {
     return;
   }
 
-  // Geo-lookup — falls back gracefully on localhost / private IPs
-  const geo = geoip.lookup(ip);
-  userGeo.set(socket.id, {
-    country:     geo?.country ? geo.country : 'Unknown',
-    countryName: geo?.country ? getCountryName(geo.country) : 'Unknown',
-  });
+  // Async geo lookup — Socket.IO queues any events emitted before handlers register
+  const geo = await lookupCountry(ip);
+  userGeo.set(socket.id, geo);
 
-  console.log(`[+] ${socket.id} connected  (${ip} / ${userGeo.get(socket.id).countryName})`);
+  console.log(`[+] ${socket.id} connected  (${ip} / ${geo.name})`);
 
   // ── join-queue ─────────────────────────────────────────────────────────────
   socket.on('join-queue', ({ mode = 'text', interests = [] }) => {
@@ -137,22 +177,22 @@ io.on('connection', (socket) => {
       userRoom.set(socket.id,       roomId);
       userRoom.set(partner.socketId, roomId);
 
-      const myGeo      = userGeo.get(socket.id)      || { country: 'Unknown', countryName: 'Unknown' };
-      const partnerGeo = userGeo.get(partner.socketId) || { country: 'Unknown', countryName: 'Unknown' };
+      const myGeo      = userGeo.get(socket.id)        || { code: 'Unknown', name: 'Unknown' };
+      const partnerGeo = userGeo.get(partner.socketId) || { code: 'Unknown', name: 'Unknown' };
 
       socket.emit('match-found', {
         roomId,
         isInitiator:      true,
         mode:             safeMode,
         partnerInterests: partner.interests,
-        partnerCountry:   { code: partnerGeo.country, name: partnerGeo.countryName },
+        partnerCountry:   partnerGeo,
       });
       io.to(partner.socketId).emit('match-found', {
         roomId,
         isInitiator:      false,
         mode:             safeMode,
         partnerInterests: safeInterests,
-        partnerCountry:   { code: myGeo.country, name: myGeo.countryName },
+        partnerCountry:   myGeo,
       });
 
       console.log(`[~] Room ${roomId}: ${socket.id} <-> ${partner.socketId}`);
