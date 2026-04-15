@@ -1,8 +1,10 @@
-const express = require('express');
-const http    = require('http');
+const express  = require('express');
+const http     = require('http');
 const { Server } = require('socket.io');
-const cors   = require('cors');
+const cors     = require('cors');
 const { v4: uuidv4 } = require('uuid');
+const bcrypt   = require('bcryptjs');
+const db       = require('./db');
 
 const app    = express();
 const server = http.createServer(app);
@@ -263,6 +265,11 @@ io.on('connection', async (socket) => {
       reportCount.set(partner, count);
       console.log(`[!] ${partner} reported (x${count}): ${reason}`);
 
+      // Persist report to database
+      db.prepare(
+        'INSERT INTO reports (id, reporter_socket, reported_socket, reason, created_at) VALUES (?,?,?,?,?)'
+      ).run(uuidv4(), socket.id, partner, reason, Date.now());
+
       if (count >= 3) {
         io.to(partner).emit('banned', { reason: 'You have been removed for violating community guidelines.' });
         const ps = io.sockets.sockets.get(partner);
@@ -283,8 +290,142 @@ io.on('connection', async (socket) => {
   });
 });
 
-// ── Health check ─────────────────────────────────────────────────────────────
-app.use(cors({ origin: CLIENT_URL }));
+// ── REST middleware ───────────────────────────────────────────────────────────
+// In development allow any localhost origin (Next.js can run on any port).
+// In production restrict to CLIENT_URL.
+const corsOpts = {
+  origin: (origin, cb) => {
+    const allowed =
+      !origin ||                              // same-origin / curl
+      origin === CLIENT_URL ||
+      /^http:\/\/localhost:\d+$/.test(origin) || // any localhost port
+      /^http:\/\/127\.0\.0\.1:\d+$/.test(origin);
+    cb(allowed ? null : new Error('CORS'), allowed);
+  },
+  credentials: true,
+  allowedHeaders: ['Content-Type', 'Authorization'],
+};
+app.use(cors(corsOpts));
+app.options('*', cors(corsOpts));            // pre-flight for all routes
+app.use(express.json({ limit: '2mb' }));   // profile photos are base64
+
+// ── Admin helpers ─────────────────────────────────────────────────────────────
+const ADMIN_USER  = process.env.ADMIN_USERNAME || 'Admin';
+const ADMIN_PASS  = process.env.ADMIN_PASSWORD || '123';
+const ADMIN_TOKEN = process.env.ADMIN_TOKEN    || 'vibeadmin-7356-secret';
+
+function requireAdmin(req, res, next) {
+  const tok = (req.headers.authorization || '').replace('Bearer ', '');
+  if (tok !== ADMIN_TOKEN) return res.status(401).json({ error: 'Unauthorised' });
+  next();
+}
+
+// ── Auth endpoints ────────────────────────────────────────────────────────────
+app.post('/api/auth/register', async (req, res) => {
+  const { name, email, dob, profilePhoto, password } = req.body || {};
+  if (!name || !email || !dob || !password)
+    return res.status(400).json({ error: 'name, email, dob and password are required' });
+  if (password.length < 8)
+    return res.status(400).json({ error: 'Password must be at least 8 characters.' });
+
+  const existing = db.prepare('SELECT id FROM users WHERE email = ?').get(email.toLowerCase().trim());
+  if (existing) return res.status(409).json({ error: 'Email already registered — please sign in.' });
+
+  const id           = uuidv4();
+  const token        = uuidv4();
+  const now          = Date.now();
+  const passwordHash = await bcrypt.hash(password, 10);
+
+  db.prepare(
+    'INSERT INTO users (id, name, email, dob, profile_photo, session_token, password_hash, created_at) VALUES (?,?,?,?,?,?,?,?)'
+  ).run(id, name.trim(), email.toLowerCase().trim(), dob, profilePhoto || null, token, passwordHash, now);
+
+  return res.json({ user: { id, name: name.trim(), email: email.toLowerCase().trim(), dob, profilePhoto: profilePhoto || null }, sessionToken: token });
+});
+
+app.post('/api/auth/login', async (req, res) => {
+  const { email, password } = req.body || {};
+  if (!email || !password) return res.status(400).json({ error: 'email and password are required' });
+
+  const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email.toLowerCase().trim());
+  if (!user) return res.status(404).json({ error: 'No account found for this email — please sign up.' });
+  if (user.is_banned) return res.status(403).json({ error: 'This account has been banned.' });
+
+  if (!user.password_hash) return res.status(401).json({ error: 'Account has no password set — please sign up again.' });
+  const match = await bcrypt.compare(password, user.password_hash);
+  if (!match) return res.status(401).json({ error: 'Incorrect password.' });
+
+  const token = uuidv4();
+  db.prepare('UPDATE users SET session_token = ?, last_seen = ? WHERE id = ?').run(token, Date.now(), user.id);
+
+  return res.json({
+    user: { id: user.id, name: user.name, email: user.email, dob: user.dob, profilePhoto: user.profile_photo },
+    sessionToken: token,
+  });
+});
+
+// Update last_seen via session token (called when user opens chat)
+app.post('/api/auth/ping', (req, res) => {
+  const { userId, sessionToken } = req.body || {};
+  if (!userId || !sessionToken) return res.status(400).json({ error: 'missing fields' });
+  const user = db.prepare('SELECT id, is_banned FROM users WHERE id = ? AND session_token = ?').get(userId, sessionToken);
+  if (!user) return res.status(401).json({ error: 'Invalid session' });
+  if (user.is_banned) return res.status(403).json({ error: 'Banned' });
+  db.prepare('UPDATE users SET last_seen = ? WHERE id = ?').run(Date.now(), userId);
+  return res.json({ ok: true });
+});
+
+// ── Admin auth ────────────────────────────────────────────────────────────────
+app.post('/api/admin/login', (req, res) => {
+  const { username, password } = req.body || {};
+  if (username === ADMIN_USER && password === ADMIN_PASS)
+    return res.json({ token: ADMIN_TOKEN });
+  return res.status(401).json({ error: 'Invalid credentials' });
+});
+
+// ── Admin data endpoints ──────────────────────────────────────────────────────
+app.get('/api/admin/stats', requireAdmin, (_req, res) => {
+  const totalUsers   = db.prepare('SELECT COUNT(*) as n FROM users').get().n;
+  const totalReports = db.prepare('SELECT COUNT(*) as n FROM reports').get().n;
+  const bannedUsers  = db.prepare('SELECT COUNT(*) as n FROM users WHERE is_banned = 1').get().n;
+  res.json({
+    totalUsers, totalReports, bannedUsers,
+    activeConnections: io.sockets.sockets.size,
+    activeRooms:       rooms.size,
+    textQueue:         textQueue.length,
+    videoQueue:        videoQueue.length,
+    uptime:            Math.floor(process.uptime()),
+  });
+});
+
+app.get('/api/admin/users', requireAdmin, (req, res) => {
+  const page  = Math.max(1, parseInt(req.query.page  || '1',  10));
+  const limit = Math.min(100, parseInt(req.query.limit || '50', 10));
+  const offset = (page - 1) * limit;
+  const users = db.prepare(
+    'SELECT id, name, email, dob, created_at, last_seen, is_banned FROM users ORDER BY created_at DESC LIMIT ? OFFSET ?'
+  ).all(limit, offset);
+  const total = db.prepare('SELECT COUNT(*) as n FROM users').get().n;
+  res.json({ users, total, page, limit });
+});
+
+app.get('/api/admin/reports', requireAdmin, (_req, res) => {
+  const reports = db.prepare('SELECT * FROM reports ORDER BY created_at DESC LIMIT 200').all();
+  res.json({ reports });
+});
+
+app.patch('/api/admin/users/:id/ban', requireAdmin, (req, res) => {
+  const { banned } = req.body;
+  db.prepare('UPDATE users SET is_banned = ? WHERE id = ?').run(banned ? 1 : 0, req.params.id);
+  res.json({ ok: true });
+});
+
+app.delete('/api/admin/users/:id', requireAdmin, (req, res) => {
+  db.prepare('DELETE FROM users WHERE id = ?').run(req.params.id);
+  res.json({ ok: true });
+});
+
+// ── Health check ──────────────────────────────────────────────────────────────
 app.get('/health', (_req, res) => {
   res.json({
     status:      'ok',

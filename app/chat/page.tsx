@@ -1,15 +1,16 @@
 'use client';
 
-import { Suspense, useEffect, useRef } from 'react';
+import { Suspense, useEffect, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowLeft, Flag, Loader2, Wifi, WifiOff, Zap, UserX } from 'lucide-react';
+import { ArrowLeft, Flag, Loader2, Wifi, WifiOff, Zap, UserX, User, LogOut } from 'lucide-react';
 import { useChat } from '@/hooks/useChat';
 import { MessageList } from '@/components/chat/MessageList';
 import { ChatInput } from '@/components/chat/ChatInput';
 import { VideoPanel } from '@/components/video/VideoPanel';
 import { ChatControls } from '@/components/controls/ChatControls';
 import { ThemeToggle } from '@/components/ui/ThemeToggle';
+import { getSession, clearSession, type UserSession } from '@/lib/auth';
 import type { ChatMode, ConnectionStatus } from '@/lib/types';
 
 const STATUS_LABEL: Record<ConnectionStatus, string> = {
@@ -52,6 +53,15 @@ function ChatPageContent() {
     startChat, stopChat, nextChat,
     sendMessage, sendTyping, toggleMute, toggleCamera, reportUser,
   } = useChat({ mode, interests: [] });
+
+  const [session, setSession] = useState<UserSession | null>(null);
+  useEffect(() => {
+    const s = getSession();
+    if (!s) { router.replace('/'); return; }
+    setSession(s);
+  }, [router]);
+
+  const handleLogout = () => { clearSession(); setSession(null); stopChat(); router.replace('/'); };;
 
   const startedRef = useRef(false);
   useEffect(() => {
@@ -99,6 +109,21 @@ function ChatPageContent() {
         </div>
 
         <div className="flex items-center gap-1">
+          {session && (
+            <div className="flex items-center gap-1.5 bg-slate-100 dark:bg-slate-800 rounded-full pl-1.5 pr-2 py-1 mr-1">
+              {session.profilePhoto
+                ? <img src={session.profilePhoto} alt="" className="w-5 h-5 rounded-full object-cover" />
+                : <div className="w-5 h-5 rounded-full bg-violet-100 dark:bg-violet-900 flex items-center justify-center"><User className="w-3 h-3 text-violet-600" /></div>}
+              <span className="text-xs font-medium text-slate-700 dark:text-slate-300 max-w-[80px] truncate hidden sm:block">{session.name}</span>
+              <button
+                onClick={handleLogout}
+                className="p-0.5 rounded-full hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
+                aria-label="Log out"
+              >
+                <LogOut className="w-3 h-3" />
+              </button>
+            </div>
+          )}
           <ThemeToggle />
           <AnimatePresence>
             {status === 'connected' && (
