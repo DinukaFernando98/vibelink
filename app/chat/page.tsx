@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowLeft, Flag, Loader2, Wifi, WifiOff, Zap, UserX, User, LogOut, UserPlus, Users } from 'lucide-react';
+import { ArrowLeft, Flag, Loader2, Wifi, WifiOff, Zap, UserX, User, LogOut, UserPlus, Users, Columns2, PictureInPicture2, Sparkles } from 'lucide-react';
 import { useChat } from '@/hooks/useChat';
 import { MessageList } from '@/components/chat/MessageList';
 import { ChatInput } from '@/components/chat/ChatInput';
@@ -44,6 +44,38 @@ function toFlag(code: string) {
     .map((c) => String.fromCodePoint(0x1f1e6 + c.charCodeAt(0) - 65))
     .join('');
 }
+
+const VIDEO_FILTERS = [
+  // Row 1 — Natural
+  { id: 'normal',    label: 'Normal',    style: 'none',                                                             emoji: '😊', group: 'Natural'   },
+  { id: 'vivid',     label: 'Vivid',     style: 'saturate(2.5) brightness(1.05)',                                   emoji: '🌈', group: 'Natural'   },
+  { id: 'warm',      label: 'Warm',      style: 'sepia(0.3) saturate(1.8) brightness(1.1)',                         emoji: '🌅', group: 'Natural'   },
+  { id: 'summer',    label: 'Summer',    style: 'brightness(1.12) saturate(1.6) hue-rotate(15deg)',                 emoji: '☀️', group: 'Natural'   },
+  { id: 'sunset',    label: 'Sunset',    style: 'sepia(0.4) saturate(2.2) hue-rotate(340deg) brightness(1.05)',     emoji: '🌇', group: 'Natural'   },
+  { id: 'lomo',      label: 'Lomo',      style: 'saturate(1.5) contrast(1.3) brightness(0.9) sepia(0.2)',           emoji: '📸', group: 'Natural'   },
+  // Row 2 — Cool tones
+  { id: 'cool',      label: 'Cool',      style: 'hue-rotate(190deg) saturate(1.5) brightness(1.05)',                emoji: '❄️', group: 'Cool'      },
+  { id: 'ice',       label: 'Ice',       style: 'brightness(1.1) saturate(0.5) hue-rotate(180deg)',                 emoji: '🧊', group: 'Cool'      },
+  { id: 'teal',      label: 'Teal',      style: 'hue-rotate(155deg) saturate(1.8) brightness(1.05)',                emoji: '🌊', group: 'Cool'      },
+  { id: 'midnight',  label: 'Midnight',  style: 'hue-rotate(220deg) saturate(2) brightness(0.7) contrast(1.3)',     emoji: '🌃', group: 'Cool'      },
+  { id: 'matrix',    label: 'Matrix',    style: 'sepia(1) hue-rotate(90deg) saturate(3) brightness(0.72)',          emoji: '💚', group: 'Cool'      },
+  { id: 'cyberpunk', label: 'Cyberpunk', style: 'saturate(2.2) hue-rotate(285deg) contrast(1.3) brightness(0.95)', emoji: '🤖', group: 'Cool'      },
+  // Row 3 — Vintage & Film
+  { id: 'vintage',   label: 'Vintage',   style: 'sepia(0.75) contrast(1.1)',                                        emoji: '📷', group: 'Film'      },
+  { id: 'sepia',     label: 'Sepia',     style: 'sepia(1) contrast(1.05)',                                          emoji: '🍂', group: 'Film'      },
+  { id: 'fade',      label: 'Fade',      style: 'brightness(1.25) saturate(0.55) contrast(0.88)',                   emoji: '🌫️', group: 'Film'      },
+  { id: 'mellow',    label: 'Mellow',    style: 'sepia(0.2) saturate(1.2) brightness(1.08) contrast(0.9)',          emoji: '🌻', group: 'Film'      },
+  { id: 'rose',      label: 'Rose',      style: 'sepia(0.4) hue-rotate(310deg) saturate(1.8) brightness(1.05)',     emoji: '🌸', group: 'Film'      },
+  { id: 'bw',        label: 'B&W',       style: 'grayscale(1) contrast(1.3)',                                       emoji: '🎞️', group: 'Film'      },
+  // Row 4 — Fun / Creative
+  { id: 'neon',      label: 'Neon',      style: 'saturate(3) hue-rotate(240deg) contrast(1.2)',                     emoji: '🔮', group: 'Fun'       },
+  { id: 'pop',       label: 'Pop Art',   style: 'saturate(4) contrast(1.5)',                                        emoji: '🎨', group: 'Fun'       },
+  { id: 'dark',      label: 'Dark',      style: 'brightness(0.58) contrast(1.4) saturate(1.3)',                     emoji: '🌑', group: 'Fun'       },
+  { id: 'infrared',  label: 'Infrared',  style: 'invert(1) sepia(1) hue-rotate(110deg) saturate(3)',                emoji: '🔴', group: 'Fun'       },
+  { id: 'alien',     label: 'Alien',     style: 'hue-rotate(90deg) saturate(2.2) brightness(0.92)',                 emoji: '👽', group: 'Fun'       },
+  { id: 'horror',    label: 'Horror',    style: 'invert(1) grayscale(0.5) contrast(1.4)',                           emoji: '👻', group: 'Fun'       },
+];
+
 
 function ChatPageContent() {
   const router       = useRouter();
@@ -120,6 +152,11 @@ function ChatPageContent() {
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status, partnerUserId]);
+
+  const [splitView, setSplitView]     = useState(false);
+  const [activeFilter, setActiveFilter] = useState('normal');
+  const [showFilters,  setShowFilters]  = useState(false);
+  const filterBtnRef = useRef<HTMLButtonElement>(null);
 
   const startedRef = useRef(false);
   useEffect(() => {
@@ -296,26 +333,100 @@ function ChatPageContent() {
 
         {/* ── Video pane ───────────────────────────────────────────── */}
         {isVideoMode && (
-          <div className="relative bg-slate-900 shrink-0 h-[42vw] max-h-72 sm:max-h-none sm:h-auto sm:flex-1">
-            <VideoPanel
-              stream={remoteStream}
-              label="Stranger"
-              status={status}
-              className="absolute inset-0 w-full h-full"
-            />
-            {/* Local PiP */}
-            <div className="absolute bottom-2 right-2 z-10
-                            w-[22vw] max-w-[80px] aspect-video
-                            sm:w-28 sm:max-w-none
-                            rounded-xl overflow-hidden border-2 border-white/20 shadow-lg">
-              <VideoPanel
-                stream={localStream}
-                muted mirror
-                isCameraOff={isCameraOff}
-                status="idle"
-                className="w-full h-full"
-              />
+          <div className="relative bg-slate-900 shrink-0 h-[60vw] max-h-[50vh] sm:max-h-none sm:h-auto sm:flex-1">
+
+            {/* ── Layout toggle ─────────────────────────────────────── */}
+            <button
+              onClick={() => setSplitView(v => !v)}
+              title={splitView ? 'Switch to PIP View' : 'Switch to Split View'}
+              aria-label={splitView ? 'PIP View' : 'Split View'}
+              className="absolute top-2 left-2 z-20 flex items-center gap-1.5 px-2.5 py-1.5 bg-black/50 hover:bg-black/70 backdrop-blur-sm rounded-xl text-white text-xs font-medium transition-colors cursor-pointer select-none"
+            >
+              {splitView
+                ? <><PictureInPicture2 className="w-3.5 h-3.5" /><span>PIP View</span></>
+                : <><Columns2 className="w-3.5 h-3.5" /><span>Split View</span></>}
+            </button>
+
+            {/* ── Face filter picker ────────────────────────────────── */}
+            <div className="absolute top-2 right-2 z-20">
+              {/* Trigger button */}
+              <button
+                ref={filterBtnRef}
+                onClick={() => setShowFilters(v => !v)}
+                title="Face filters"
+                className={`flex items-center gap-1.5 px-2.5 py-1.5 backdrop-blur-sm rounded-xl text-white text-xs font-medium transition-colors cursor-pointer select-none ${activeFilter !== 'normal' ? 'bg-violet-600/80 hover:bg-violet-500/80' : 'bg-black/50 hover:bg-black/70'}`}
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+                <span>
+                  {activeFilter !== 'normal'
+                    ? (VIDEO_FILTERS.find(f => f.id === activeFilter)?.emoji ?? '✨')
+                    : 'Filters'}
+                </span>
+              </button>
+
+              <AnimatePresence>
+                {showFilters && (
+                  <motion.div
+                    initial={{ opacity: 0, scale: 0.95, y: -4 }}
+                    animate={{ opacity: 1, scale: 1, y: 0 }}
+                    exit={{ opacity: 0, scale: 0.95, y: -4 }}
+                    transition={{ duration: 0.12 }}
+                    className="absolute top-full right-0 mt-1.5 w-60 bg-black/85 backdrop-blur-md rounded-2xl p-2.5 shadow-2xl border border-white/10 max-h-[70vh] overflow-y-auto"
+                  >
+                    {(['Natural', 'Cool', 'Film', 'Fun'] as const).map(group => (
+                      <div key={group} className="mb-2">
+                        <p className="text-[9px] text-white/35 px-1 pb-1 font-semibold uppercase tracking-widest">{group}</p>
+                        <div className="grid grid-cols-6 gap-1">
+                          {VIDEO_FILTERS.filter(f => f.group === group).map(f => (
+                            <button key={f.id}
+                              onClick={() => { setActiveFilter(f.id); setShowFilters(false); }}
+                              title={f.label}
+                              className={`flex flex-col items-center gap-0.5 p-1.5 rounded-xl cursor-pointer transition-colors ${activeFilter === f.id ? 'bg-violet-600/70 ring-1 ring-violet-400' : 'hover:bg-white/10'}`}
+                            >
+                              <span className="text-lg leading-none">{f.emoji}</span>
+                              <span className="text-[8px] text-white/60 leading-none truncate w-full text-center">{f.label}</span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
+
+            {splitView ? (
+              /* ── Split view — side by side ────────────────────────── */
+              <div className="absolute inset-0 flex">
+                <div className="flex-1 relative border-r border-slate-700/50">
+                  <VideoPanel stream={remoteStream} label="Stranger" status={status} className="absolute inset-0 w-full h-full" />
+                  <span className="absolute bottom-2 left-1/2 -translate-x-1/2 text-[11px] text-white/80 bg-black/40 backdrop-blur-sm px-2.5 py-0.5 rounded-full pointer-events-none select-none">Stranger</span>
+                </div>
+                <div className="flex-1 relative">
+                  <VideoPanel
+                    stream={localStream} muted mirror isCameraOff={isCameraOff}
+                    filterStyle={VIDEO_FILTERS.find(f => f.id === activeFilter)?.style}
+                    status="idle" className="absolute inset-0 w-full h-full"
+                  />
+                  <span className="absolute bottom-2 left-1/2 -translate-x-1/2 text-[11px] text-white/80 bg-black/40 backdrop-blur-sm px-2.5 py-0.5 rounded-full pointer-events-none select-none">You</span>
+                </div>
+              </div>
+            ) : (
+              /* ── PIP view — remote full-screen, local corner ──────── */
+              <>
+                <VideoPanel stream={remoteStream} label="Stranger" status={status} className="absolute inset-0 w-full h-full" />
+                <div className="absolute bottom-2 right-2 z-10
+                                w-[30vw] max-w-[160px] aspect-video
+                                sm:w-56 sm:max-w-none
+                                rounded-xl overflow-hidden border-2 border-white/20 shadow-lg">
+                  <VideoPanel
+                    stream={localStream} muted mirror isCameraOff={isCameraOff}
+                    filterStyle={VIDEO_FILTERS.find(f => f.id === activeFilter)?.style}
+                    status="idle" className="w-full h-full"
+                  />
+                </div>
+              </>
+            )}
           </div>
         )}
 

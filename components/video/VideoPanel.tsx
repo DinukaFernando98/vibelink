@@ -12,11 +12,12 @@ interface VideoPanelProps {
   status?: string;
   className?: string;
   isCameraOff?: boolean;
+  filterStyle?: string;
 }
 
 export function VideoPanel({
   stream, label, muted = false, mirror = false,
-  status, className = '', isCameraOff = false,
+  status, className = '', isCameraOff = false, filterStyle,
 }: VideoPanelProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
 
@@ -39,6 +40,7 @@ export function VideoPanel({
         autoPlay
         playsInline
         muted={muted}
+        style={filterStyle ? { filter: filterStyle } : undefined}
         className={[
           'w-full h-full object-cover transition-opacity duration-300',
           mirror ? 'mirror' : '',

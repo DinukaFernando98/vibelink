@@ -6,6 +6,7 @@ import {
   X, Users, Bell, Send, Video, UserMinus,
   Check, User, MessageSquare, Phone, PhoneOff,
   ToggleLeft, ToggleRight, ArrowLeft, Clock,
+  Mic, MicOff, VideoOff,
 } from 'lucide-react';
 import { getSession, type UserSession } from '@/lib/auth';
 import { toFlag } from '@/lib/countries';
@@ -16,6 +17,7 @@ import {
 } from '@/lib/friends';
 import { useFriendSocket, type IncomingCall, type IncomingFriendRequest } from '@/hooks/useFriendSocket';
 import { WebRTCManager } from '@/lib/webrtc';
+import { VideoPanel } from '@/components/video/VideoPanel';
 import { getSocket } from '@/lib/socket';
 
 type Tab = 'friends' | 'requests';
@@ -30,10 +32,8 @@ const CALL_TIMEOUT_MS = 60_000;
 export interface FriendsDrawerProps {
   isOpen: boolean;
   onClose: () => void;
-  /** Called when a friend request arrives (for in-chat toast use by parent) */
   onFriendRequestReceived?: (req: IncomingFriendRequest) => void;
-  /** Called when unread DM count changes */
-  onUnreadChange?: (count: number) => void;
+  onUnreadChange?: (total: number) => void;
 }
 
 export function FriendsDrawer({ isOpen, onClose, onFriendRequestReceived, onUnreadChange }: FriendsDrawerProps) {
@@ -45,33 +45,41 @@ export function FriendsDrawer({ isOpen, onClose, onFriendRequestReceived, onUnre
   const [loading,  setLoading]  = useState(true);
 
   // UI
-  const [tab,           setTab]        = useState<Tab>('friends');
-  const [selected,      setSelected]   = useState<Friend | null>(null);
-  const [showChat,      setShowChat]   = useState(false);   // mobile: list vs chat
-  const [messages,      setMessages]   = useState<ChatMsg[]>([]);
-  const [msgInput,      setMsgInput]   = useState('');
-  const [msgLoading,    setMsgLoading] = useState(false);
-  const [isActive,      setIsActive]   = useState(true);
+  const [tab,        setTab]      = useState<Tab>('friends');
+  const [selected,   setSelected] = useState<Friend | null>(null);
+  const [showChat,   setShowChat] = useState(false);
+  const [messages,   setMessages] = useState<ChatMsg[]>([]);
+  const [msgInput,   setMsgInput] = useState('');
+  const [msgLoading, setMsgLoading] = useState(false);
+  const [isActive,   setIsActive] = useState(true);
 
-  // Notifications
-  const [unreadCount,   setUnreadCount]   = useState(0);
-  const unreadRef = useRef(0);
+  // Per-friend unread counts
+  const [perFriendUnread, setPerFriendUnread] = useState<Record<string, number>>({});
+  const perFriendUnreadRef = useRef<Record<string, number>>({});
 
   // Video call
-  const [incomingCall,   setIncomingCall]  = useState<IncomingCall | null>(null);
-  const [outgoingCall,   setOutgoingCall]  = useState<Friend | null>(null);
-  const [callStatus,     setCallStatus]    = useState<'no-answer' | 'declined' | null>(null);
-  const [activeCallId,   setActiveCallId]  = useState<string | null>(null);
-  const [localStream,    setLocalStream]   = useState<MediaStream | null>(null);
-  const [remoteStream,   setRemoteStream]  = useState<MediaStream | null>(null);
-  const webrtcRef       = useRef<WebRTCManager | null>(null);
-  const localVidRef     = useRef<HTMLVideoElement>(null);
-  const remoteVidRef    = useRef<HTMLVideoElement>(null);
-  const messagesEndRef  = useRef<HTMLDivElement>(null);
-  const callTimeoutRef  = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const isOpenRef       = useRef(isOpen);
+  const [incomingCall,  setIncomingCall]  = useState<IncomingCall | null>(null);
+  const [outgoingCall,  setOutgoingCall]  = useState<Friend | null>(null);
+  const [callStatus,    setCallStatus]    = useState<'no-answer' | 'declined' | null>(null);
+  const [activeCallId,  setActiveCallId]  = useState<string | null>(null);
+  const [localStream,   setLocalStream]   = useState<MediaStream | null>(null);
+  const [remoteStream,  setRemoteStream]  = useState<MediaStream | null>(null);
+  const [isMuted,       setIsMuted]       = useState(false);
+  const [isCameraOff,   setIsCameraOff]   = useState(false);
+
+  const webrtcRef      = useRef<WebRTCManager | null>(null);
+  const localStreamRef = useRef<MediaStream | null>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const callTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isOpenRef      = useRef(isOpen);
+  const selectedRef    = useRef<Friend | null>(null);
+
+  // Queue for offers that arrive before WebRTC is ready
+  const pendingOfferRef = useRef<{ callId: string; offer: RTCSessionDescriptionInit } | null>(null);
 
   useEffect(() => { isOpenRef.current = isOpen; }, [isOpen]);
+  useEffect(() => { selectedRef.current = selected; }, [selected]);
+  useEffect(() => { localStreamRef.current = localStream; }, [localStream]);
 
   useEffect(() => {
     const s = getSession();
@@ -81,12 +89,6 @@ export function FriendsDrawer({ isOpen, onClose, onFriendRequestReceived, onUnre
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  useEffect(() => {
-    if (localStream && localVidRef.current) localVidRef.current.srcObject = localStream;
-  }, [localStream]);
-  useEffect(() => {
-    if (remoteStream && remoteVidRef.current) remoteVidRef.current.srcObject = remoteStream;
-  }, [remoteStream]);
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
@@ -113,10 +115,14 @@ export function FriendsDrawer({ isOpen, onClose, onFriendRequestReceived, onUnre
     setSelected(f);
     setShowChat(true);
     loadMessages(f);
-    // Clear unread for this conversation (simplified: clear all on open)
-    setUnreadCount(0);
-    unreadRef.current = 0;
-    onUnreadChange?.(0);
+    // Clear this friend's unread count
+    setPerFriendUnread(prev => {
+      const next = { ...prev, [f.id]: 0 };
+      perFriendUnreadRef.current = next;
+      const total = (Object.values(next) as number[]).reduce((a, b) => a + b, 0);
+      onUnreadChange?.(total);
+      return next;
+    });
   }, [loadMessages, onUnreadChange]);
 
   // ── Call helpers ─────────────────────────────────────────────────────────
@@ -127,42 +133,86 @@ export function FriendsDrawer({ isOpen, onClose, onFriendRequestReceived, onUnre
   const stopCall = useCallback(() => {
     clearCallTimeout();
     webrtcRef.current?.close(); webrtcRef.current = null;
-    localStream?.getTracks().forEach(t => t.stop());
+    localStreamRef.current?.getTracks().forEach(t => t.stop());
     setLocalStream(null); setRemoteStream(null);
     setActiveCallId(null); setOutgoingCall(null);
-  }, [localStream]);
+    setIsMuted(false); setIsCameraOff(false);
+    pendingOfferRef.current = null;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const toggleMute = useCallback(() => {
+    const t = localStreamRef.current?.getAudioTracks()[0];
+    if (t) { t.enabled = !t.enabled; setIsMuted(!t.enabled); }
+  }, []);
+
+  const toggleCamera = useCallback(() => {
+    const t = localStreamRef.current?.getVideoTracks()[0];
+    if (t) { t.enabled = !t.enabled; setIsCameraOff(!t.enabled); }
+  }, []);
+
+  // ── Start WebRTC for the accepted call ────────────────────────────────────
+  const startCallWebRTC = useCallback(async (callId: string, isInitiator: boolean, signals: {
+    sendOffer:  (id: string, o: RTCSessionDescriptionInit) => void;
+    sendAnswer: (id: string, a: RTCSessionDescriptionInit) => void;
+    sendIce:    (id: string, c: RTCIceCandidateInit) => void;
+  }) => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+      localStreamRef.current = stream;
+      setLocalStream(stream);
+      setActiveCallId(callId);
+      const socket = getSocket();
+      webrtcRef.current = new WebRTCManager(
+        socket, callId,
+        (rs) => setRemoteStream(rs),
+        (state) => { if (state === 'failed' || state === 'disconnected') stopCall(); },
+      );
+      await webrtcRef.current.initDirect(stream, isInitiator, callId, signals);
+
+      // Process any queued offer that arrived before WebRTC was ready
+      if (!isInitiator && pendingOfferRef.current) {
+        const { callId: pid, offer } = pendingOfferRef.current;
+        pendingOfferRef.current = null;
+        await webrtcRef.current.handleOffer(offer);
+        const answer = webrtcRef.current.getPendingAnswer();
+        if (answer) signals.sendAnswer(pid, answer);
+      }
+    } catch { stopCall(); }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stopCall]);
 
   // ── Socket ───────────────────────────────────────────────────────────────
   const { sendDm, inviteToCall, respondToCall, sendOffer, sendAnswer, sendIce, endCall } = useFriendSocket({
-    onFriendRequest: (req) => {
-      onFriendRequestReceived?.(req);
-    },
+    onFriendRequest: (req) => { onFriendRequestReceived?.(req); },
 
     onDmReceived: (msg) => {
-      const myId = getSession()?.id ?? '';
-      const senderId = msg.from_id ?? (msg as any).fromId ?? msg.from?.id;
+      const myId    = getSession()?.id ?? '';
+      const senderId = (msg as any).from?.id ?? msg.from_id ?? (msg as any).fromId ?? '';
 
       setMessages(prev => {
-        // Only append if this conversation is open
-        const isConversationOpen = selected?.id === senderId || selected?.id === msg.to_id;
+        const isConversationOpen = selectedRef.current?.id === senderId;
         if (!isConversationOpen) return prev;
         if (prev.find(m => m.id === msg.id)) return prev;
         return [...prev, {
           id: msg.id,
-          from_id: senderId ?? '',
-          to_id: myId,
+          from_id: senderId,
+          to_id:   myId,
           content: msg.content,
           created_at: (msg as any).created_at ?? (msg as any).createdAt ?? Date.now(),
         }];
       });
 
-      // Increment unread if drawer is closed or this conversation isn't selected
-      const isConversationVisible = isOpenRef.current && selected?.id === senderId;
-      if (!isConversationVisible) {
-        const next = unreadRef.current + 1;
-        unreadRef.current = next;
-        setUnreadCount(next);
-        onUnreadChange?.(next);
+      // Increment per-friend unread if conversation not currently visible
+      const isVisible = isOpenRef.current && selectedRef.current?.id === senderId;
+      if (!isVisible && senderId) {
+        setPerFriendUnread(prev => {
+          const next = { ...prev, [senderId]: (prev[senderId] ?? 0) + 1 };
+          perFriendUnreadRef.current = next;
+          const total = (Object.values(next) as number[]).reduce((a, b) => a + b, 0);
+          onUnreadChange?.(total);
+          return next;
+        });
       }
     },
 
@@ -175,31 +225,25 @@ export function FriendsDrawer({ isOpen, onClose, onFriendRequestReceived, onUnre
       clearCallTimeout();
       setOutgoingCall(null);
       setCallStatus('declined');
-      setTimeout(() => setCallStatus(null), 3000);
+      setTimeout(() => setCallStatus(null), 4000);
       stopCall();
     },
 
     onCallEnded: () => { stopCall(); },
 
+    // Fires for BOTH caller (isInitiator:true) and callee (isInitiator:false)
     onCallAccepted: async ({ callId, isInitiator }) => {
       clearCallTimeout();
       setOutgoingCall(null);
-      setActiveCallId(callId);
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-        setLocalStream(stream);
-        const socket = getSocket();
-        webrtcRef.current = new WebRTCManager(
-          socket, callId,
-          (rs) => setRemoteStream(rs),
-          (state) => { if (state === 'failed' || state === 'disconnected') stopCall(); },
-        );
-        await webrtcRef.current.initDirect(stream, isInitiator, callId, { sendOffer, sendAnswer, sendIce });
-      } catch { stopCall(); }
+      await startCallWebRTC(callId, isInitiator, { sendOffer, sendAnswer, sendIce });
     },
 
     onFriendOffer: async ({ callId, offer }) => {
-      if (!webrtcRef.current) return;
+      if (!webrtcRef.current) {
+        // WebRTC not ready yet — queue the offer
+        pendingOfferRef.current = { callId, offer };
+        return;
+      }
       await webrtcRef.current.handleOffer(offer);
       const answer = webrtcRef.current.getPendingAnswer();
       if (answer) sendAnswer(callId, answer);
@@ -212,6 +256,7 @@ export function FriendsDrawer({ isOpen, onClose, onFriendRequestReceived, onUnre
     if (!incomingCall) return;
     respondToCall(incomingCall.callId, true);
     setIncomingCall(null);
+    // Note: onCallAccepted fires for both sides — WebRTC starts there
   };
 
   const handleDeclineCall = () => {
@@ -223,7 +268,6 @@ export function FriendsDrawer({ isOpen, onClose, onFriendRequestReceived, onUnre
   const handleCallFriend = (f: Friend) => {
     setOutgoingCall(f);
     inviteToCall(f.id);
-    // Auto-timeout after 60s
     clearCallTimeout();
     callTimeoutRef.current = setTimeout(() => {
       setOutgoingCall(null);
@@ -285,26 +329,75 @@ export function FriendsDrawer({ isOpen, onClose, onFriendRequestReceived, onUnre
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ── Active call — full-screen overlay (always rendered, outside drawer) ──
+  // ── Active call — full-screen overlay using VideoPanel ───────────────────
+  const callFriend = selected ?? friends.find(f => f.id === outgoingCall?.id) ?? null;
+
   if (activeCallId) {
-    const callFriend = selected ?? friends.find(f => f.id === outgoingCall?.id) ?? null;
     return (
-      <div className="fixed inset-0 z-[200] bg-black flex flex-col">
-        {remoteStream
-          ? <video ref={remoteVidRef} autoPlay playsInline className="w-full h-full object-cover" />
-          : <div className="w-full h-full flex items-center justify-center">
-              <div className="text-white text-center">
-                {callFriend?.profilePhoto
-                  ? <img src={callFriend.profilePhoto} className="w-20 h-20 rounded-full mx-auto mb-3 object-cover" alt="" />
-                  : <div className="w-20 h-20 rounded-full bg-violet-700 flex items-center justify-center mx-auto mb-3"><User className="w-8 h-8 text-white" /></div>}
-                <p className="font-semibold text-lg">{callFriend?.name}</p>
-                <p className="text-slate-400 text-sm mt-1">Connecting…</p>
-              </div>
-            </div>}
-        <video ref={localVidRef} autoPlay playsInline muted className="absolute bottom-24 right-4 w-28 h-20 rounded-xl object-cover border-2 border-white/20 shadow-lg" />
-        <div className="absolute bottom-8 left-1/2 -translate-x-1/2">
-          <button onClick={handleEndCall} className="w-14 h-14 rounded-full bg-red-500 hover:bg-red-400 flex items-center justify-center shadow-lg cursor-pointer transition-colors">
-            <PhoneOff className="w-6 h-6 text-white" />
+      <div className="fixed inset-0 z-[200] bg-slate-900 flex flex-col overflow-hidden">
+        {/* Remote video — full area */}
+        <div className="relative flex-1">
+          <VideoPanel
+            stream={remoteStream}
+            label={callFriend?.name}
+            status={remoteStream ? 'connected' : 'searching'}
+            className="absolute inset-0 w-full h-full"
+          />
+
+          {/* Local PiP */}
+          <div className="absolute bottom-2 right-2 z-10 w-[44vw] max-w-[160px] sm:w-56 sm:max-w-none aspect-video rounded-xl overflow-hidden border-2 border-white/20 shadow-lg">
+            <VideoPanel
+              stream={localStream}
+              muted
+              mirror
+              isCameraOff={isCameraOff}
+              status="idle"
+              className="w-full h-full"
+            />
+          </div>
+
+          {/* Friend info overlay (top) */}
+          {callFriend && (
+            <div className="absolute top-4 left-4 flex items-center gap-2 bg-black/50 backdrop-blur-sm rounded-xl px-3 py-2">
+              {callFriend.profilePhoto
+                ? <img src={callFriend.profilePhoto} className="w-7 h-7 rounded-full object-cover" alt="" />
+                : <div className="w-7 h-7 rounded-full bg-violet-700 flex items-center justify-center"><User className="w-3.5 h-3.5 text-white" /></div>}
+              <span className="text-sm font-medium text-white">{callFriend.name}</span>
+            </div>
+          )}
+        </div>
+
+        {/* Controls bar — matches the stranger video page style */}
+        <div className="shrink-0 flex items-center justify-center gap-3 px-4 py-3 bg-white dark:bg-slate-950 border-t border-slate-100 dark:border-slate-800">
+          <button
+            onClick={toggleMute}
+            aria-label={isMuted ? 'Unmute' : 'Mute'}
+            className={`flex flex-col items-center gap-1 px-4 py-2.5 min-w-[60px] min-h-[56px] rounded-2xl cursor-pointer transition-colors select-none ${isMuted ? 'bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-slate-200 border border-slate-300 dark:border-slate-600' : 'bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-400'}`}
+          >
+            <span className="w-5 h-5 flex items-center justify-center">
+              {isMuted ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
+            </span>
+            <span className="text-[10px] font-medium leading-none">{isMuted ? 'Unmute' : 'Mute'}</span>
+          </button>
+
+          <button
+            onClick={toggleCamera}
+            aria-label={isCameraOff ? 'Cam on' : 'Cam off'}
+            className={`flex flex-col items-center gap-1 px-4 py-2.5 min-w-[60px] min-h-[56px] rounded-2xl cursor-pointer transition-colors select-none ${isCameraOff ? 'bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-slate-200 border border-slate-300 dark:border-slate-600' : 'bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-400'}`}
+          >
+            <span className="w-5 h-5 flex items-center justify-center">
+              {isCameraOff ? <VideoOff className="w-4 h-4" /> : <Video className="w-4 h-4" />}
+            </span>
+            <span className="text-[10px] font-medium leading-none">{isCameraOff ? 'Cam on' : 'Cam off'}</span>
+          </button>
+
+          <button
+            onClick={handleEndCall}
+            aria-label="End call"
+            className="flex flex-col items-center gap-1 px-4 py-2.5 min-w-[60px] min-h-[56px] rounded-2xl cursor-pointer transition-colors bg-red-50 dark:bg-red-950/40 hover:bg-red-100 dark:hover:bg-red-950/60 text-red-500 border border-red-100 dark:border-red-900/50"
+          >
+            <span className="w-5 h-5 flex items-center justify-center"><PhoneOff className="w-4 h-4" /></span>
+            <span className="text-[10px] font-medium leading-none">End</span>
           </button>
         </div>
       </div>
@@ -313,7 +406,7 @@ export function FriendsDrawer({ isOpen, onClose, onFriendRequestReceived, onUnre
 
   return (
     <>
-      {/* ── Incoming call — always visible regardless of drawer state ────── */}
+      {/* ── Incoming call — always visible regardless of drawer state ──── */}
       <AnimatePresence>
         {incomingCall && (
           <motion.div
@@ -341,7 +434,7 @@ export function FriendsDrawer({ isOpen, onClose, onFriendRequestReceived, onUnre
         )}
       </AnimatePresence>
 
-      {/* ── Outgoing call — always visible ────────────────────────────────── */}
+      {/* ── Outgoing call — always visible ──────────────────────────────── */}
       <AnimatePresence>
         {outgoingCall && (
           <motion.div
@@ -359,7 +452,7 @@ export function FriendsDrawer({ isOpen, onClose, onFriendRequestReceived, onUnre
                   Calling…
                 </p>
               </div>
-              <button onClick={handleCancelOutgoingCall} className="w-9 h-9 rounded-full bg-red-500 hover:bg-red-400 flex items-center justify-center cursor-pointer transition-colors shrink-0" aria-label="Cancel call">
+              <button onClick={handleCancelOutgoingCall} className="w-9 h-9 rounded-full bg-red-500 hover:bg-red-400 flex items-center justify-center cursor-pointer transition-colors shrink-0" aria-label="Cancel">
                 <PhoneOff className="w-4 h-4 text-white" />
               </button>
             </div>
@@ -367,7 +460,7 @@ export function FriendsDrawer({ isOpen, onClose, onFriendRequestReceived, onUnre
         )}
       </AnimatePresence>
 
-      {/* ── Call feedback toasts ──────────────────────────────────────────── */}
+      {/* ── Call feedback ────────────────────────────────────────────────── */}
       <AnimatePresence>
         {callStatus && (
           <motion.div
@@ -375,9 +468,7 @@ export function FriendsDrawer({ isOpen, onClose, onFriendRequestReceived, onUnre
             className="fixed top-4 left-1/2 -translate-x-1/2 z-[300] w-full max-w-sm px-3 pointer-events-none"
           >
             <div className="bg-red-50 dark:bg-red-950/90 rounded-2xl shadow-xl border border-red-200 dark:border-red-800 px-4 py-3 flex items-center gap-2">
-              {callStatus === 'no-answer'
-                ? <Clock className="w-4 h-4 text-red-500 shrink-0" />
-                : <PhoneOff className="w-4 h-4 text-red-500 shrink-0" />}
+              {callStatus === 'no-answer' ? <Clock className="w-4 h-4 text-red-500 shrink-0" /> : <PhoneOff className="w-4 h-4 text-red-500 shrink-0" />}
               <p className="text-sm text-red-700 dark:text-red-300">
                 {callStatus === 'no-answer' ? 'No answer — call timed out' : 'Call was declined'}
               </p>
@@ -421,9 +512,7 @@ export function FriendsDrawer({ isOpen, onClose, onFriendRequestReceived, onUnre
                   className="flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-400 hover:text-violet-600 transition-colors cursor-pointer"
                   title={isActive ? 'Set invisible' : 'Set active'}
                 >
-                  {isActive
-                    ? <ToggleRight className="w-5 h-5 text-violet-600" />
-                    : <ToggleLeft  className="w-5 h-5 text-slate-400"  />}
+                  {isActive ? <ToggleRight className="w-5 h-5 text-violet-600" /> : <ToggleLeft className="w-5 h-5 text-slate-400" />}
                   <span className="hidden sm:inline text-xs">{isActive ? 'Active' : 'Invisible'}</span>
                 </button>
                 <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 cursor-pointer transition-colors" aria-label="Close">
@@ -438,9 +527,7 @@ export function FriendsDrawer({ isOpen, onClose, onFriendRequestReceived, onUnre
                 {/* Tabs */}
                 <div className="flex gap-1 p-3 border-b border-slate-100 dark:border-slate-800 shrink-0">
                   {(['friends', 'requests'] as Tab[]).map(t => (
-                    <button
-                      key={t}
-                      onClick={() => setTab(t)}
+                    <button key={t} onClick={() => setTab(t)}
                       className={`flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-medium rounded-xl transition-colors cursor-pointer ${tab === t ? 'bg-violet-600 text-white' : 'text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'}`}
                     >
                       {t === 'friends' ? <Users className="w-3.5 h-3.5" /> : <Bell className="w-3.5 h-3.5" />}
@@ -466,44 +553,45 @@ export function FriendsDrawer({ isOpen, onClose, onFriendRequestReceived, onUnre
                       </div>
                     ) : (
                       <ul className="py-1">
-                        {friends.map(f => (
-                          <li key={f.id} className="flex items-center gap-2 px-3 py-2 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
-                            <button onClick={() => selectFriend(f)} className="flex items-center gap-2.5 flex-1 min-w-0 cursor-pointer text-left">
-                              <div className="relative shrink-0">
-                                {f.profilePhoto
-                                  ? <img src={f.profilePhoto} className="w-9 h-9 rounded-full object-cover" alt="" />
-                                  : <div className="w-9 h-9 rounded-full bg-violet-100 dark:bg-violet-900 flex items-center justify-center"><User className="w-4 h-4 text-violet-600" /></div>}
-                                <span className={`absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full border-2 border-white dark:border-slate-950 ${f.isOnline ? 'bg-green-500' : 'bg-slate-300 dark:bg-slate-600'}`} />
-                              </div>
-                              <div className="flex-1 min-w-0">
-                                <p className="text-sm font-medium text-slate-800 dark:text-slate-200 truncate flex items-center gap-1">
-                                  {f.name}
-                                  {f.countryCode && <span className="text-sm leading-none" aria-label={f.countryName ?? ''}>{toFlag(f.countryCode)}</span>}
-                                </p>
-                                <p className="text-xs text-slate-400 dark:text-slate-500 truncate">
-                                  {f.isOnline && f.is_active ? '🟢 Active now' : f.isOnline ? 'Online' : 'Offline'}
-                                </p>
-                              </div>
-                            </button>
-                            <div className="flex items-center gap-1 shrink-0">
-                              <button
-                                onClick={() => selectFriend(f)}
-                                title="Chat"
-                                className="w-7 h-7 rounded-lg hover:bg-violet-100 dark:hover:bg-violet-900/40 flex items-center justify-center transition-colors cursor-pointer text-violet-500"
-                              >
-                                <MessageSquare className="w-3.5 h-3.5" />
+                        {friends.map(f => {
+                          const unread = perFriendUnread[f.id] ?? 0;
+                          return (
+                            <li key={f.id} className={`flex items-center gap-2 px-3 py-2 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors ${selected?.id === f.id && showChat ? 'bg-violet-50 dark:bg-violet-900/20' : ''}`}>
+                              <button onClick={() => selectFriend(f)} className="flex items-center gap-2.5 flex-1 min-w-0 cursor-pointer text-left">
+                                <div className="relative shrink-0">
+                                  {f.profilePhoto
+                                    ? <img src={f.profilePhoto} className="w-9 h-9 rounded-full object-cover" alt="" />
+                                    : <div className="w-9 h-9 rounded-full bg-violet-100 dark:bg-violet-900 flex items-center justify-center"><User className="w-4 h-4 text-violet-600" /></div>}
+                                  <span className={`absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full border-2 border-white dark:border-slate-950 ${f.isOnline ? 'bg-green-500' : 'bg-slate-300 dark:bg-slate-600'}`} />
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-sm font-medium text-slate-800 dark:text-slate-200 truncate flex items-center gap-1.5">
+                                    {f.name}
+                                    {f.countryCode && <span className="text-sm leading-none" aria-label={f.countryName ?? ''}>{toFlag(f.countryCode)}</span>}
+                                    {unread > 0 && (
+                                      <span className="ml-auto shrink-0 min-w-[18px] h-[18px] px-1 bg-violet-600 text-white text-[10px] font-bold rounded-full flex items-center justify-center leading-none">
+                                        {unread > 9 ? '9+' : unread}
+                                      </span>
+                                    )}
+                                  </p>
+                                  <p className="text-xs text-slate-400 dark:text-slate-500 truncate">
+                                    {f.isOnline && f.is_active ? '🟢 Active now' : f.isOnline ? 'Online' : 'Offline'}
+                                  </p>
+                                </div>
                               </button>
-                              <button
-                                onClick={() => handleCallFriend(f)}
-                                disabled={!f.isOnline}
-                                title={f.isOnline ? 'Video call' : 'Offline'}
-                                className="w-7 h-7 rounded-lg hover:bg-violet-100 dark:hover:bg-violet-900/40 flex items-center justify-center transition-colors cursor-pointer text-violet-500 disabled:opacity-40 disabled:cursor-not-allowed"
-                              >
-                                <Video className="w-3.5 h-3.5" />
-                              </button>
-                            </div>
-                          </li>
-                        ))}
+                              <div className="flex items-center gap-1 shrink-0">
+                                <button onClick={() => selectFriend(f)} title="Chat"
+                                  className="w-7 h-7 rounded-lg hover:bg-violet-100 dark:hover:bg-violet-900/40 flex items-center justify-center transition-colors cursor-pointer text-violet-500">
+                                  <MessageSquare className="w-3.5 h-3.5" />
+                                </button>
+                                <button onClick={() => handleCallFriend(f)} disabled={!f.isOnline} title={f.isOnline ? 'Video call' : 'Offline'}
+                                  className="w-7 h-7 rounded-lg hover:bg-violet-100 dark:hover:bg-violet-900/40 flex items-center justify-center transition-colors cursor-pointer text-violet-500 disabled:opacity-40 disabled:cursor-not-allowed">
+                                  <Video className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            </li>
+                          );
+                        })}
                       </ul>
                     )
                   ) : (
@@ -539,7 +627,6 @@ export function FriendsDrawer({ isOpen, onClose, onFriendRequestReceived, onUnre
                 </div>
               </>
             ) : (
-              /* ── Chat panel ─────────────────────────────────────────── */
               selected && (
                 <div className="flex flex-col flex-1 overflow-hidden">
                   {/* Chat header */}
@@ -565,18 +652,12 @@ export function FriendsDrawer({ isOpen, onClose, onFriendRequestReceived, onUnre
                       </div>
                     </div>
                     <div className="flex items-center gap-1">
-                      <button
-                        onClick={() => handleCallFriend(selected)}
-                        disabled={!selected.isOnline}
-                        className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-violet-600 hover:bg-violet-50 dark:hover:bg-violet-900/30 rounded-lg transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
-                      >
-                        <Video className="w-3.5 h-3.5" />
-                        <span>Call</span>
+                      <button onClick={() => handleCallFriend(selected)} disabled={!selected.isOnline}
+                        className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-violet-600 hover:bg-violet-50 dark:hover:bg-violet-900/30 rounded-lg transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed">
+                        <Video className="w-3.5 h-3.5" /><span>Call</span>
                       </button>
-                      <button
-                        onClick={() => handleUnfriend(selected)}
-                        className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 rounded-lg transition-colors cursor-pointer"
-                      >
+                      <button onClick={() => handleUnfriend(selected)}
+                        className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 rounded-lg transition-colors cursor-pointer">
                         <UserMinus className="w-3.5 h-3.5" />
                       </button>
                     </div>
@@ -617,11 +698,8 @@ export function FriendsDrawer({ isOpen, onClose, onFriendRequestReceived, onUnre
                         placeholder="Message…"
                         className="flex-1 h-10 px-3 text-sm rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:border-violet-400 dark:focus:border-violet-500 transition-colors"
                       />
-                      <button
-                        onClick={handleSend}
-                        disabled={!msgInput.trim()}
-                        className="w-10 h-10 rounded-xl bg-violet-600 hover:bg-violet-500 disabled:opacity-40 flex items-center justify-center transition-colors cursor-pointer"
-                      >
+                      <button onClick={handleSend} disabled={!msgInput.trim()}
+                        className="w-10 h-10 rounded-xl bg-violet-600 hover:bg-violet-500 disabled:opacity-40 flex items-center justify-center transition-colors cursor-pointer">
                         <Send className="w-4 h-4 text-white" />
                       </button>
                     </div>
