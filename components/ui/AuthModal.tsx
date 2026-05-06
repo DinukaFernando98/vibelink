@@ -281,15 +281,19 @@ export function AuthModal({ onSuccess, onClose }: AuthModalProps) {
                   </span>
                 </label>
 
-                <label className="flex items-start gap-2.5 cursor-pointer">
+                <div className="flex items-start gap-2.5">
                   <input
+                    id="terms-checkbox"
                     type="checkbox" checked={terms} onChange={(e) => setTerms(e.target.checked)}
-                    className="mt-0.5 accent-violet-600"
+                    className="mt-0.5 accent-violet-600 cursor-pointer shrink-0"
                   />
                   <span className="text-xs text-slate-600 dark:text-slate-400">
-                    I accept the <span className="text-violet-600 underline cursor-pointer">Terms &amp; Conditions</span> and <span className="text-violet-600 underline cursor-pointer">Privacy Policy</span>
+                    <label htmlFor="terms-checkbox" className="cursor-pointer">I accept the </label>
+                    <a href="/terms" target="_blank" rel="noopener noreferrer" className="text-violet-600 underline hover:text-violet-500" onClick={e => e.stopPropagation()}>Terms &amp; Conditions</a>
+                    <label htmlFor="terms-checkbox" className="cursor-pointer"> and </label>
+                    <a href="/privacy" target="_blank" rel="noopener noreferrer" className="text-violet-600 underline hover:text-violet-500" onClick={e => e.stopPropagation()}>Privacy Policy</a>
                   </span>
-                </label>
+                </div>
 
                 <SubmitBtn loading={loading} label="Create account & start chatting" />
               </motion.form>

@@ -3,7 +3,8 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { AnimatePresence, motion } from 'framer-motion';
-import { MessageSquare, Video, Shield, Zap, LogOut, User, Users } from 'lucide-react';
+import Link from 'next/link';
+import { MessageSquare, Video, Shield, Zap, LogOut, User, Users, Mail } from 'lucide-react';
 import { PeopleGrid } from '@/components/ui/PeopleGrid';
 import { VCollage } from '@/components/ui/VCollage';
 import { AuthModal } from '@/components/ui/AuthModal';
@@ -52,12 +53,19 @@ export default function LandingPage() {
   };
 
   return (
-    <div className="min-h-screen bg-white dark:bg-slate-950 flex flex-col items-center justify-center px-6 relative overflow-hidden">
+    <div className="min-h-screen bg-white dark:bg-slate-950 flex flex-col px-6 relative overflow-hidden">
 
       <PeopleGrid />
 
-      {/* Top-right: user info / country */}
+      {/* Top-right: user info / country / Get in Touch */}
       <div className="absolute top-4 right-4 z-20 flex items-center gap-2">
+        <Link
+          href="/contact"
+          className="flex items-center gap-1.5 bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm border border-slate-200 dark:border-slate-700 rounded-full px-3 py-1.5 text-xs text-slate-600 dark:text-slate-300 hover:text-violet-600 dark:hover:text-violet-400 hover:border-violet-300 transition-colors shadow-sm"
+        >
+          <Mail className="w-3 h-3" />
+          Get in Touch
+        </Link>
         {myCountry && !session && (
           <div className="flex items-center gap-1.5 bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm border border-slate-200 dark:border-slate-700 rounded-full px-3 py-1.5 text-xs text-slate-600 dark:text-slate-300 shadow-sm select-none">
             <span aria-hidden="true">{toFlag(myCountry.code)}</span>
@@ -97,7 +105,7 @@ export default function LandingPage() {
       </div>
 
       {/* Main content */}
-      <div className="relative z-10 flex flex-col items-center w-full">
+      <div className="flex-1 flex flex-col items-center justify-center w-full relative z-10">
 
         <motion.div
           initial={{ opacity: 0, y: -12 }}
@@ -162,6 +170,20 @@ export default function LandingPage() {
         isOpen={friendsOpen}
         onClose={() => setFriendsOpen(false)}
       />
+
+      {/* ── Footer ──────────────────────────────────────────────────── */}
+      <footer className="relative z-10 w-full py-5 px-6 flex flex-col sm:flex-row items-center justify-between gap-3 border-t border-slate-100 dark:border-slate-800/60 mt-auto">
+        <p className="text-[11px] text-slate-400 dark:text-slate-600">
+          &copy; {new Date().getFullYear()} VibeLink &mdash; Talk to strangers, stay anonymous.
+        </p>
+        <div className="flex items-center gap-5">
+          <Link href="/contact" className="text-[11px] text-slate-400 dark:text-slate-600 hover:text-violet-600 dark:hover:text-violet-400 transition-colors flex items-center gap-1">
+            <Mail className="w-3 h-3" />Get in Touch
+          </Link>
+          <Link href="/terms"   className="text-[11px] text-slate-400 dark:text-slate-600 hover:text-violet-600 dark:hover:text-violet-400 transition-colors">Terms and Conditions</Link>
+          <Link href="/privacy" className="text-[11px] text-slate-400 dark:text-slate-600 hover:text-violet-600 dark:hover:text-violet-400 transition-colors">Privacy Policy</Link>
+        </div>
+      </footer>
     </div>
   );
 }

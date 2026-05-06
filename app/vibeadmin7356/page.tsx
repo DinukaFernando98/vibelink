@@ -3,13 +3,13 @@
 import { useEffect, useState, useCallback } from 'react';
 import {
   Users, Flag, BarChart2, LogOut, RefreshCw, Trash2,
-  ShieldOff, Shield, Loader2, Activity, Wifi, Clock, AlertTriangle,
+  ShieldOff, Shield, Loader2, Activity, Wifi, Clock, AlertTriangle, Mail, CheckCircle, Circle,
 } from 'lucide-react';
 
 const API = () => process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:3001';
 const TOKEN_KEY = 'vl_admin_token';
 
-type Tab = 'overview' | 'users' | 'reports';
+type Tab = 'overview' | 'users' | 'reports' | 'enquiries';
 
 interface Stats {
   totalUsers: number; totalReports: number; bannedUsers: number;
@@ -24,6 +24,10 @@ interface Report {
   id: string; reporter_socket: string; reported_socket: string;
   reason: string; created_at: number;
 }
+interface Enquiry {
+  id: string; name: string; email: string; subject: string;
+  message: string; status: string; created_at: number;
+}
 
 function fmt(ms: number | null) {
   if (!ms) return '—';
@@ -35,13 +39,14 @@ function fmtUptime(s: number) {
 }
 
 export default function AdminDashboard() {
-  const [token,   setToken]   = useState<string | null>(null);
-  const [tab,     setTab]     = useState<Tab>('overview');
-  const [stats,   setStats]   = useState<Stats | null>(null);
-  const [users,   setUsers]   = useState<DBUser[]>([]);
-  const [reports, setReports] = useState<Report[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error,   setError]   = useState('');
+  const [token,     setToken]     = useState<string | null>(null);
+  const [tab,       setTab]       = useState<Tab>('overview');
+  const [stats,     setStats]     = useState<Stats | null>(null);
+  const [users,     setUsers]     = useState<DBUser[]>([]);
+  const [reports,   setReports]   = useState<Report[]>([]);
+  const [enquiries, setEnquiries] = useState<Enquiry[]>([]);
+  const [loading,   setLoading]   = useState(false);
+  const [error,     setError]     = useState('');
 
   // Login form
   const [username, setUsername] = useState('');
@@ -87,12 +92,30 @@ export default function AdminDashboard() {
     setLoading(false);
   }, [token, authHeader]);
 
+  const loadEnquiries = useCallback(async () => {
+    if (!token) return;
+    setLoading(true);
+    try {
+      const r = await fetch(`${API()}/api/admin/enquiries`, { headers: authHeader() });
+      if (r.ok) { const d = await r.json(); setEnquiries(d.enquiries); }
+    } catch { /* ignore */ }
+    setLoading(false);
+  }, [token, authHeader]);
+
+  const updateEnquiryStatus = async (id: string, status: string) => {
+    await fetch(`${API()}/api/admin/enquiries/${id}/status`, {
+      method: 'PATCH', headers: authHeader(), body: JSON.stringify({ status }),
+    });
+    loadEnquiries();
+  };
+
   useEffect(() => {
     if (!token) return;
     loadStats();
-    if (tab === 'users')   loadUsers();
-    if (tab === 'reports') loadReports();
-  }, [token, tab, loadStats, loadUsers, loadReports]);
+    if (tab === 'users')     loadUsers();
+    if (tab === 'reports')   loadReports();
+    if (tab === 'enquiries') loadEnquiries();
+  }, [token, tab, loadStats, loadUsers, loadReports, loadEnquiries]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -202,7 +225,7 @@ export default function AdminDashboard() {
 
       {/* Tabs */}
       <div className="px-6 pt-4 flex gap-1 border-b border-slate-200 bg-white">
-        {([['overview', BarChart2, 'Overview'], ['users', Users, 'Users'], ['reports', Flag, 'Reports']] as const).map(([id, Icon, label]) => (
+        {([['overview', BarChart2, 'Overview'], ['users', Users, 'Users'], ['reports', Flag, 'Reports'], ['enquiries', Mail, 'Enquiries']] as const).map(([id, Icon, label]) => (
           <button
             key={id}
             onClick={() => setTab(id)}
@@ -215,8 +238,9 @@ export default function AdminDashboard() {
           >
             <Icon className="w-4 h-4" />
             {label}
-            {id === 'users'   && stats && <Chip n={stats.totalUsers} />}
-            {id === 'reports' && stats && <Chip n={stats.totalReports} />}
+            {id === 'users'     && stats && <Chip n={stats.totalUsers} />}
+            {id === 'reports'   && stats && <Chip n={stats.totalReports} />}
+            {id === 'enquiries' && enquiries.filter(e => e.status === 'new').length > 0 && <Chip n={enquiries.filter(e => e.status === 'new').length} />}
           </button>
         ))}
       </div>
@@ -345,6 +369,49 @@ export default function AdminDashboard() {
                       </tbody>
                     </table>
                   </div>
+                </div>
+              )
+            }
+          </div>
+        )}
+
+        {/* ── Enquiries ── */}
+        {tab === 'enquiries' && (
+          <div>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-base font-semibold text-slate-800">Contact enquiries</h2>
+              <button onClick={loadEnquiries} className="text-xs text-violet-600 hover:underline cursor-pointer">Refresh</button>
+            </div>
+            {loading
+              ? <Spinner />
+              : enquiries.length === 0
+              ? <Empty text="No enquiries yet." />
+              : (
+                <div className="flex flex-col gap-3">
+                  {enquiries.map((eq) => (
+                    <div key={eq.id} className={`bg-white rounded-2xl border p-4 ${eq.status === 'new' ? 'border-violet-200' : 'border-slate-200'}`}>
+                      <div className="flex items-start justify-between gap-3 flex-wrap">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap mb-1">
+                            <span className="font-semibold text-slate-800 text-sm">{eq.name}</span>
+                            <span className="text-slate-400 text-xs">&lt;{eq.email}&gt;</span>
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-violet-100 text-violet-700">{eq.subject}</span>
+                            {eq.status === 'new'
+                              ? <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-blue-100 text-blue-700"><Circle className="w-2 h-2 fill-blue-500" />New</span>
+                              : <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-green-100 text-green-700"><CheckCircle className="w-2.5 h-2.5" />Resolved</span>}
+                          </div>
+                          <p className="text-xs text-slate-500 mb-2">{fmt(eq.created_at)}</p>
+                          <p className="text-sm text-slate-700 whitespace-pre-wrap leading-relaxed">{eq.message}</p>
+                        </div>
+                        <button
+                          onClick={() => updateEnquiryStatus(eq.id, eq.status === 'new' ? 'resolved' : 'new')}
+                          className={`shrink-0 px-3 py-1.5 text-xs font-medium rounded-xl transition-colors cursor-pointer ${eq.status === 'new' ? 'bg-green-100 text-green-700 hover:bg-green-200' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
+                        >
+                          {eq.status === 'new' ? 'Mark resolved' : 'Reopen'}
+                        </button>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               )
             }

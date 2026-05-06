@@ -658,6 +658,22 @@ app.post('/api/auth/ping', (req, res) => {
   return res.json({ ok: true });
 });
 
+// ── Contact form (public) ─────────────────────────────────────────────────────
+app.post('/api/contact', (req, res) => {
+  const { name, email, subject, message } = req.body || {};
+  if (!name || !email || !subject || !message)
+    return res.status(400).json({ error: 'All fields are required.' });
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
+    return res.status(400).json({ error: 'Invalid email address.' });
+  if (message.trim().length < 10)
+    return res.status(400).json({ error: 'Message must be at least 10 characters.' });
+  const id = require('uuid').v4();
+  db.prepare(
+    'INSERT INTO contact_submissions (id, name, email, subject, message, status, created_at) VALUES (?,?,?,?,?,?,?)'
+  ).run(id, name.trim(), email.toLowerCase().trim(), subject.trim(), message.trim(), 'new', Date.now());
+  return res.json({ ok: true });
+});
+
 // ── Admin auth ────────────────────────────────────────────────────────────────
 app.post('/api/admin/login', (req, res) => {
   const { username, password } = req.body || {};
@@ -695,6 +711,17 @@ app.get('/api/admin/users', requireAdmin, (req, res) => {
 app.get('/api/admin/reports', requireAdmin, (_req, res) => {
   const reports = db.prepare('SELECT * FROM reports ORDER BY created_at DESC LIMIT 200').all();
   res.json({ reports });
+});
+
+app.get('/api/admin/enquiries', requireAdmin, (_req, res) => {
+  const enquiries = db.prepare('SELECT * FROM contact_submissions ORDER BY created_at DESC LIMIT 500').all();
+  res.json({ enquiries });
+});
+
+app.patch('/api/admin/enquiries/:id/status', requireAdmin, (req, res) => {
+  const { status } = req.body || {};
+  db.prepare('UPDATE contact_submissions SET status = ? WHERE id = ?').run(status, req.params.id);
+  res.json({ ok: true });
 });
 
 app.patch('/api/admin/users/:id/ban', requireAdmin, (req, res) => {
