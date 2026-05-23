@@ -5,20 +5,20 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   X, Users, Bell, Send, Video, UserMinus,
   Check, User, MessageSquare, Phone, PhoneOff,
-  ToggleLeft, ToggleRight, ArrowLeft, Clock,
-  Mic, MicOff, VideoOff,
+  ToggleLeft, ToggleRight, ArrowLeft, Clock, Flag,
 } from 'lucide-react';
 import { getSession, type UserSession } from '@/lib/auth';
 import { toFlag } from '@/lib/countries';
 import {
   apiFriends, apiFriendRequests, apiRespondToRequest,
-  apiUnfriend, apiFriendMessages, apiToggleActiveStatus,
+  apiUnfriend, apiFriendMessages, apiToggleActiveStatus, apiFriendReport,
   type Friend, type FriendRequest, type DirectMessage,
 } from '@/lib/friends';
 import { useFriendSocket, type IncomingCall, type IncomingFriendRequest } from '@/hooks/useFriendSocket';
 import { WebRTCManager } from '@/lib/webrtc';
-import { VideoPanel } from '@/components/video/VideoPanel';
 import { getSocket } from '@/lib/socket';
+import { VideoCallScreen } from '@/components/video/VideoCallScreen';
+import { ReportModal } from '@/components/ui/ReportModal';
 
 type Tab = 'friends' | 'requests';
 
@@ -66,6 +66,10 @@ export function FriendsDrawer({ isOpen, onClose, onFriendRequestReceived, onUnre
   const [remoteStream,  setRemoteStream]  = useState<MediaStream | null>(null);
   const [isMuted,       setIsMuted]       = useState(false);
   const [isCameraOff,   setIsCameraOff]   = useState(false);
+
+  // Report
+  const [reportOpen,    setReportOpen]    = useState(false);
+  const [reportLoading, setReportLoading] = useState(false);
 
   const webrtcRef      = useRef<WebRTCManager | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
@@ -329,78 +333,40 @@ export function FriendsDrawer({ isOpen, onClose, onFriendRequestReceived, onUnre
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ── Active call — full-screen overlay using VideoPanel ───────────────────
+  // ── Resolve the friend involved in the current call ─────────────────────
   const callFriend = selected ?? friends.find(f => f.id === outgoingCall?.id) ?? null;
 
+  // ── Active call — shared VideoCallScreen (matches public chat video) ──────
   if (activeCallId) {
     return (
-      <div className="fixed inset-0 z-[200] bg-slate-900 flex flex-col overflow-hidden">
-        {/* Remote video — full area */}
-        <div className="relative flex-1">
-          <VideoPanel
-            stream={remoteStream}
-            label={callFriend?.name}
-            status={remoteStream ? 'connected' : 'searching'}
-            className="absolute inset-0 w-full h-full"
-          />
-
-          {/* Local PiP */}
-          <div className="absolute bottom-2 right-2 z-10 w-[44vw] max-w-[160px] sm:w-56 sm:max-w-none aspect-video rounded-xl overflow-hidden border-2 border-white/20 shadow-lg">
-            <VideoPanel
-              stream={localStream}
-              muted
-              mirror
-              isCameraOff={isCameraOff}
-              status="idle"
-              className="w-full h-full"
-            />
-          </div>
-
-          {/* Friend info overlay (top) */}
-          {callFriend && (
-            <div className="absolute top-4 left-4 flex items-center gap-2 bg-black/50 backdrop-blur-sm rounded-xl px-3 py-2">
-              {callFriend.profilePhoto
-                ? <img src={callFriend.profilePhoto} className="w-7 h-7 rounded-full object-cover" alt="" />
-                : <div className="w-7 h-7 rounded-full bg-violet-700 flex items-center justify-center"><User className="w-3.5 h-3.5 text-white" /></div>}
-              <span className="text-sm font-medium text-white">{callFriend.name}</span>
-            </div>
-          )}
-        </div>
-
-        {/* Controls bar — matches the stranger video page style */}
-        <div className="shrink-0 flex items-center justify-center gap-3 px-4 py-3 bg-white dark:bg-slate-950 border-t border-slate-100 dark:border-slate-800">
-          <button
-            onClick={toggleMute}
-            aria-label={isMuted ? 'Unmute' : 'Mute'}
-            className={`flex flex-col items-center gap-1 px-4 py-2.5 min-w-[60px] min-h-[56px] rounded-2xl cursor-pointer transition-colors select-none ${isMuted ? 'bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-slate-200 border border-slate-300 dark:border-slate-600' : 'bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-400'}`}
-          >
-            <span className="w-5 h-5 flex items-center justify-center">
-              {isMuted ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
-            </span>
-            <span className="text-[10px] font-medium leading-none">{isMuted ? 'Unmute' : 'Mute'}</span>
-          </button>
-
-          <button
-            onClick={toggleCamera}
-            aria-label={isCameraOff ? 'Cam on' : 'Cam off'}
-            className={`flex flex-col items-center gap-1 px-4 py-2.5 min-w-[60px] min-h-[56px] rounded-2xl cursor-pointer transition-colors select-none ${isCameraOff ? 'bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-slate-200 border border-slate-300 dark:border-slate-600' : 'bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-400'}`}
-          >
-            <span className="w-5 h-5 flex items-center justify-center">
-              {isCameraOff ? <VideoOff className="w-4 h-4" /> : <Video className="w-4 h-4" />}
-            </span>
-            <span className="text-[10px] font-medium leading-none">{isCameraOff ? 'Cam on' : 'Cam off'}</span>
-          </button>
-
-          <button
-            onClick={handleEndCall}
-            aria-label="End call"
-            className="flex flex-col items-center gap-1 px-4 py-2.5 min-w-[60px] min-h-[56px] rounded-2xl cursor-pointer transition-colors bg-red-50 dark:bg-red-950/40 hover:bg-red-100 dark:hover:bg-red-950/60 text-red-500 border border-red-100 dark:border-red-900/50"
-          >
-            <span className="w-5 h-5 flex items-center justify-center"><PhoneOff className="w-4 h-4" /></span>
-            <span className="text-[10px] font-medium leading-none">End</span>
-          </button>
-        </div>
-      </div>
+      <>
+        <VideoCallScreen
+          localStream={localStream}
+          remoteStream={remoteStream}
+          isMuted={isMuted}
+          isCameraOff={isCameraOff}
+          friend={callFriend}
+          onToggleMute={toggleMute}
+          onToggleCamera={toggleCamera}
+          onEndCall={handleEndCall}
+          onReport={callFriend ? () => setReportOpen(true) : undefined}
+        />
+        {/* Report modal available during a call */}
+        <ReportModal
+          isOpen={reportOpen}
+          onClose={() => setReportOpen(false)}
+          remoteStream={remoteStream}
+          chatLog={messages.slice(-30).map(m => `[${m.from_id === session?.id ? 'You' : callFriend?.name ?? 'Friend'}] ${m.content}`)}
+          loading={reportLoading}
+          onSubmit={async (data) => {
+            if (!callFriend) return;
+            setReportLoading(true);
+            try { await apiFriendReport(callFriend.id, data); }
+            catch { /* ignore */ } finally { setReportLoading(false); }
+            setReportOpen(false);
+          }}
+        />
+      </>
     );
   }
 
@@ -656,8 +622,14 @@ export function FriendsDrawer({ isOpen, onClose, onFriendRequestReceived, onUnre
                         className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-violet-600 hover:bg-violet-50 dark:hover:bg-violet-900/30 rounded-lg transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed">
                         <Video className="w-3.5 h-3.5" /><span>Call</span>
                       </button>
+                      <button onClick={() => setReportOpen(true)}
+                        className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-orange-500 hover:bg-orange-50 dark:hover:bg-orange-950/30 rounded-lg transition-colors cursor-pointer"
+                        title="Report this user">
+                        <Flag className="w-3.5 h-3.5" />
+                      </button>
                       <button onClick={() => handleUnfriend(selected)}
-                        className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 rounded-lg transition-colors cursor-pointer">
+                        className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 rounded-lg transition-colors cursor-pointer"
+                        title="Unfriend">
                         <UserMinus className="w-3.5 h-3.5" />
                       </button>
                     </div>
@@ -710,6 +682,22 @@ export function FriendsDrawer({ isOpen, onClose, onFriendRequestReceived, onUnre
           </motion.aside>
         )}
       </AnimatePresence>
+
+      {/* ── Report modal (friend chat & calls) ────────────────────────── */}
+      <ReportModal
+        isOpen={reportOpen && !activeCallId}
+        onClose={() => setReportOpen(false)}
+        remoteStream={null}
+        chatLog={messages.slice(-30).map(m => `[${m.from_id === session?.id ? 'You' : selected?.name ?? 'Friend'}] ${m.content}`)}
+        loading={reportLoading}
+        onSubmit={async (data) => {
+          if (!selected) return;
+          setReportLoading(true);
+          try { await apiFriendReport(selected.id, data); } catch { /* ignore */ }
+          finally { setReportLoading(false); }
+          setReportOpen(false);
+        }}
+      />
     </>
   );
 }

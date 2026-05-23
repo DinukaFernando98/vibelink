@@ -38,3 +38,14 @@ Thumbs.db
 # TypeScript
 *.tsbuildinfo
 next-env.d.ts
+
+# SQLite (legacy — production uses MySQL)
+server/*.db
+server/*.db-shm
+server/*.db-wal
+
+# DDEV (local dev only)
+.ddev/
+
+# Logs
+*.log

@@ -20,6 +20,23 @@ interface UseChatOptions {
 // Delay (ms) before auto-searching after partner disconnects
 const AUTO_NEXT_DELAY = 2500;
 
+// Cache ICE servers for 1 hour so we don't hit the Metered API on every match
+let iceCache: { servers: RTCIceServer[]; expiresAt: number } | null = null;
+
+async function fetchIceServers(): Promise<RTCIceServer[]> {
+  if (iceCache && Date.now() < iceCache.expiresAt) return iceCache.servers;
+  try {
+    const base = process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:3001';
+    const r = await fetch(`${base}/api/ice-servers`);
+    if (!r.ok) throw new Error('bad response');
+    const servers: RTCIceServer[] = await r.json();
+    iceCache = { servers, expiresAt: Date.now() + 60 * 60 * 1000 };
+    return servers;
+  } catch {
+    return [{ urls: 'stun:stun.l.google.com:19302' }];
+  }
+}
+
 export function useChat({ mode, interests }: UseChatOptions) {
   const [status,           setStatus]          = useState<ConnectionStatus>('idle');
   const [messages,         setMessages]        = useState<Message[]>([]);
@@ -174,9 +191,12 @@ export function useChat({ mode, interests }: UseChatOptions) {
     if (t) { t.enabled = !t.enabled; setIsCameraOff(!t.enabled); }
   }, []);
 
-  const reportUser = useCallback((reason = 'inappropriate') => {
+  const reportUser = useCallback((payload: {
+    category?: string; description?: string;
+    screenshot?: string | null; chatLog?: string[];
+  } = {}) => {
     if (!roomIdRef.current) return;
-    socket.emit('report', { roomId: roomIdRef.current, reason });
+    socket.emit('report', { roomId: roomIdRef.current, ...payload });
   }, [socket]);
 
   // ── socket events ────────────────────────────────────────────────────────────
@@ -195,12 +215,13 @@ export function useChat({ mode, interests }: UseChatOptions) {
       if (matchMode === 'video') {
         const stream = localStreamRef.current || (await getLocalMedia());
         if (!stream) return;
+        const iceServers = await fetchIceServers();
         webrtcRef.current = new WebRTCManager(
           socket, rid,
           (rs)    => setRemoteStream(rs),
           (state) => { if (state === 'failed' || state === 'disconnected') setStatus('disconnected'); }
         );
-        await webrtcRef.current.init(stream, isInitiator);
+        await webrtcRef.current.init(stream, isInitiator, iceServers);
       }
     };
 

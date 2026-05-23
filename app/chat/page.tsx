@@ -14,6 +14,7 @@ import { getSession, clearSession, type UserSession } from '@/lib/auth';
 import { useFriendSocket, type IncomingFriendRequest } from '@/hooks/useFriendSocket';
 import { FriendRequestToast } from '@/components/friends/FriendRequestToast';
 import { FriendsDrawer } from '@/components/friends/FriendsDrawer';
+import { ReportModal } from '@/components/ui/ReportModal';
 import { apiRespondToRequest, apiCheckFriend } from '@/lib/friends';
 import type { ChatMode, ConnectionStatus } from '@/lib/types';
 
@@ -154,6 +155,8 @@ function ChatPageContent() {
   }, [status, partnerUserId]);
 
   const [splitView, setSplitView]     = useState(false);
+  const [reportOpen, setReportOpen]   = useState(false);
+  const [reporting,  setReporting]    = useState(false);
   const [activeFilter, setActiveFilter] = useState('normal');
   const [showFilters,  setShowFilters]  = useState(false);
   const filterBtnRef = useRef<HTMLButtonElement>(null);
@@ -171,7 +174,7 @@ function ChatPageContent() {
     <div className="h-[100dvh] bg-white dark:bg-slate-950 flex flex-col overflow-hidden">
 
       {/* ── Header ────────────────────────────────────────────────────── */}
-      <header className="shrink-0 flex items-center justify-between px-3 py-2.5 border-b border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-950 z-20">
+      <header className="shrink-0 flex items-center justify-between px-3 py-2 border-b border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-950 z-20 min-h-[56px]">
         <div className="flex items-center gap-2">
           <button
             onClick={() => { stopChat(); router.push('/'); }}
@@ -194,7 +197,7 @@ function ChatPageContent() {
             {status === 'connected' && connectionTime !== null && (
               <span className="text-xs text-slate-400 dark:text-slate-500 tabular-nums">{fmt(connectionTime)}</span>
             )}
-            {status === 'connected' && partnerCountry && partnerCountry.name !== 'Unknown' && (
+            {status === 'connected' && partnerCountry && partnerCountry.code && !['Unknown','Local',''].includes(partnerCountry.name) && (
               <span className="flex items-center gap-1 text-xs text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-full">
                 <span aria-hidden="true">{toFlag(partnerCountry.code)}</span>
                 {partnerCountry.name}
@@ -270,7 +273,7 @@ function ChatPageContent() {
                 )}
                 <motion.button
                   initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                  onClick={() => reportUser()}
+                  onClick={() => setReportOpen(true)}
                   aria-label="Report user"
                   className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-red-500 hover:bg-red-50 dark:hover:bg-red-950/40 rounded-lg transition-colors cursor-pointer"
                 >
@@ -521,6 +524,21 @@ function ChatPageContent() {
         onStop={stopChat}
         onToggleMute={toggleMute}
         onToggleCamera={toggleCamera}
+      />
+
+      {/* ── Report modal ───────────────────────────────────────────────────── */}
+      <ReportModal
+        isOpen={reportOpen}
+        onClose={() => setReportOpen(false)}
+        remoteStream={remoteStream}
+        messages={messages}
+        loading={reporting}
+        onSubmit={async (data) => {
+          setReporting(true);
+          reportUser(data);
+          setReporting(false);
+          setTimeout(() => { setReportOpen(false); nextChat(); }, 1800);
+        }}
       />
 
       {/* ── Friends drawer (handles all friend socket events + notifications) ── */}

@@ -1,15 +1,9 @@
 import type { Socket } from 'socket.io-client';
 
-const ICE_SERVERS: RTCConfiguration = {
-  iceServers: [
-    { urls: 'stun:stun.l.google.com:19302' },
-    { urls: 'stun:stun1.l.google.com:19302' },
-    { urls: 'stun:stun2.l.google.com:19302' },
-    { urls: 'stun:stun3.l.google.com:19302' },
-    { urls: 'stun:stun4.l.google.com:19302' },
-  ],
-  iceCandidatePoolSize: 10,
-};
+const FALLBACK_ICE: RTCIceServer[] = [
+  { urls: 'stun:stun.l.google.com:19302' },
+  { urls: 'stun:stun1.l.google.com:19302' },
+];
 
 export class WebRTCManager {
   private pc: RTCPeerConnection | null = null;
@@ -39,9 +33,10 @@ export class WebRTCManager {
       sendOffer:  (callId: string, offer: RTCSessionDescriptionInit) => void;
       sendAnswer: (callId: string, answer: RTCSessionDescriptionInit) => void;
       sendIce:    (callId: string, candidate: RTCIceCandidateInit) => void;
-    }
+    },
+    iceServers?: RTCIceServer[]
   ): Promise<void> {
-    this.pc = new RTCPeerConnection(ICE_SERVERS);
+    this.pc = new RTCPeerConnection({ iceServers: iceServers ?? FALLBACK_ICE, iceCandidatePoolSize: 10 });
     localStream.getTracks().forEach(track => this.pc!.addTrack(track, localStream));
     this.pc.ontrack = (e) => { if (e.streams[0]) this.onRemoteStream(e.streams[0]); };
     this.pc.onicecandidate = (e) => { if (e.candidate) signals.sendIce(callId, e.candidate); };
@@ -86,8 +81,8 @@ export class WebRTCManager {
     try { await this.pc.addIceCandidate(new RTCIceCandidate(candidate)); } catch { /* ignore */ }
   }
 
-  async init(localStream: MediaStream, isInitiator: boolean): Promise<void> {
-    this.pc = new RTCPeerConnection(ICE_SERVERS);
+  async init(localStream: MediaStream, isInitiator: boolean, iceServers?: RTCIceServer[]): Promise<void> {
+    this.pc = new RTCPeerConnection({ iceServers: iceServers ?? FALLBACK_ICE, iceCandidatePoolSize: 10 });
 
     // Add local tracks to the connection
     localStream.getTracks().forEach((track) => {

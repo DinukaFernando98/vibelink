@@ -1,30 +1,19 @@
 import Link from 'next/link';
-import { Zap } from 'lucide-react';
+import { PageShell } from '@/components/ui/PageShell';
 
-export const metadata = { title: 'Terms & Conditions – VibeLink' };
+export const metadata = { title: 'Terms and Conditions – VibeLink' };
 
 export default function TermsPage() {
   return (
-    <div className="min-h-screen bg-white dark:bg-slate-950">
-      {/* Nav */}
-      <header className="sticky top-0 z-10 bg-white/90 dark:bg-slate-950/90 backdrop-blur-sm border-b border-slate-100 dark:border-slate-800 px-6 py-3 flex items-center justify-between">
-        <Link href="/" className="flex items-center gap-2">
-          <div className="w-7 h-7 rounded-lg bg-violet-600 flex items-center justify-center">
-            <Zap className="w-4 h-4 text-white" />
-          </div>
-          <span className="font-bold text-slate-900 dark:text-white text-sm">VibeLink</span>
-        </Link>
-        <div className="flex items-center gap-4 text-xs text-slate-500">
-          <Link href="/privacy" className="hover:text-violet-600 transition-colors">Privacy Policy</Link>
-          <Link href="/contact" className="hover:text-violet-600 transition-colors">Contact</Link>
+    <PageShell>
+      <div className="max-w-3xl mx-auto px-6 py-12">
+        <div className="mb-10">
+          <p className="text-xs font-semibold text-violet-400 uppercase tracking-widest mb-3">Legal</p>
+          <h1 className="font-heading text-3xl sm:text-4xl font-bold text-slate-900 dark:text-white mb-2">Terms &amp; Conditions</h1>
+          <p className="text-sm text-slate-500">Last updated: 1 May 2025</p>
         </div>
-      </header>
 
-      <main className="max-w-3xl mx-auto px-6 py-12">
-        <h1 className="text-3xl font-extrabold text-slate-900 dark:text-white mb-2">Terms &amp; Conditions</h1>
-        <p className="text-sm text-slate-400 mb-10">Last updated: 1 May 2025</p>
-
-        <div className="prose prose-slate dark:prose-invert max-w-none space-y-8 text-sm leading-7 text-slate-700 dark:text-slate-300">
+        <div className="space-y-8 text-sm leading-7 text-slate-600 dark:text-slate-400">
 
           <Section title="1. Acceptance of Terms">
             <p>By accessing or using VibeLink (&ldquo;the Service&rdquo;, &ldquo;we&rdquo;, &ldquo;us&rdquo;, or &ldquo;our&rdquo;), you agree to be bound by these Terms &amp; Conditions (&ldquo;Terms&rdquo;). If you do not agree to all of these Terms, you must not use the Service. We reserve the right to amend these Terms at any time, and your continued use of the Service after any such amendments constitutes your acceptance of the new Terms.</p>
@@ -35,7 +24,7 @@ export default function TermsPage() {
           </Section>
 
           <Section title="3. Eligibility">
-            <p>You must be at least <strong>18 years of age</strong> to use VibeLink. By using the Service, you represent and warrant that you are 18 years of age or older. If you are under 18, you are not permitted to use this Service under any circumstances. We reserve the right to terminate any account and refuse service to anyone who misrepresents their age.</p>
+            <p>You must be at least <strong className="text-slate-900 dark:text-white">18 years of age</strong> to use VibeLink. By using the Service, you represent and warrant that you are 18 years of age or older. If you are under 18, you are not permitted to use this Service under any circumstances. We reserve the right to terminate any account and refuse service to anyone who misrepresents their age.</p>
           </Section>
 
           <Section title="4. Account Registration">
@@ -44,7 +33,7 @@ export default function TermsPage() {
 
           <Section title="5. Prohibited Conduct">
             <p>You agree that you will not use the Service to:</p>
-            <ul className="list-disc pl-6 space-y-1.5">
+            <ul className="list-disc pl-6 space-y-2 mt-3">
               <li>Transmit, upload, or share any content that is illegal, harmful, threatening, abusive, harassing, defamatory, obscene, sexually explicit, or otherwise objectionable.</li>
               <li>Expose minors to inappropriate or explicit content of any kind.</li>
               <li>Engage in, solicit, or facilitate the exchange of child sexual abuse material (CSAM) — any such activity will be immediately reported to law enforcement authorities.</li>
@@ -66,24 +55,24 @@ export default function TermsPage() {
           </Section>
 
           <Section title="7. Privacy">
-            <p>Your use of the Service is also governed by our <Link href="/privacy" className="text-violet-600 hover:underline">Privacy Policy</Link>, which is incorporated into these Terms by reference. Please review the Privacy Policy carefully to understand our data practices.</p>
+            <p>Your use of the Service is also governed by our <Link href="/privacy" className="text-violet-400 hover:text-violet-300 underline transition-colors">Privacy Policy</Link>, which is incorporated into these Terms by reference. Please review the Privacy Policy carefully to understand our data practices.</p>
           </Section>
 
           <Section title="8. Video Communications and Recording">
-            <p>VibeLink uses WebRTC (Web Real-Time Communication) technology for video and audio communications. Video and audio streams are transmitted directly between users on a peer-to-peer basis and are <strong>not stored, recorded, or monitored</strong> by VibeLink&apos;s servers.</p>
+            <p>VibeLink uses WebRTC (Web Real-Time Communication) technology for video and audio communications. Video and audio streams are transmitted directly between users on a peer-to-peer basis and are <strong className="text-slate-900 dark:text-white">not stored, recorded, or monitored</strong> by VibeLink&apos;s servers.</p>
             <p className="mt-3">Unauthorised recording of any video or audio session without the explicit consent of all parties is strictly prohibited and may violate applicable laws, including wiretapping and privacy statutes. VibeLink accepts no liability for any unlawful recording undertaken by users.</p>
           </Section>
 
           <Section title="9. Termination">
-            <p>We reserve the right, in our sole discretion, to suspend or terminate your access to the Service at any time and for any reason, including but not limited to a breach of these Terms, without notice or liability. Upon termination, your right to use the Service will immediately cease. All provisions of these Terms which by their nature should survive termination shall survive, including ownership provisions, warranty disclaimers, indemnity, and limitations of liability.</p>
+            <p>We reserve the right, in our sole discretion, to suspend or terminate your access to the Service at any time and for any reason, including but not limited to a breach of these Terms, without notice or liability. Upon termination, your right to use the Service will immediately cease.</p>
           </Section>
 
           <Section title="10. Disclaimer of Warranties">
-            <p>THE SERVICE IS PROVIDED ON AN &ldquo;AS IS&rdquo; AND &ldquo;AS AVAILABLE&rdquo; BASIS WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO IMPLIED WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, NON-INFRINGEMENT, OR COURSE OF PERFORMANCE. VIBELINK DOES NOT WARRANT THAT THE SERVICE WILL BE UNINTERRUPTED, ERROR-FREE, SECURE, OR FREE OF VIRUSES OR OTHER HARMFUL COMPONENTS.</p>
+            <p className="text-slate-500">THE SERVICE IS PROVIDED ON AN &ldquo;AS IS&rdquo; AND &ldquo;AS AVAILABLE&rdquo; BASIS WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO IMPLIED WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, NON-INFRINGEMENT, OR COURSE OF PERFORMANCE.</p>
           </Section>
 
           <Section title="11. Limitation of Liability">
-            <p>TO THE FULLEST EXTENT PERMITTED BY LAW, VIBELINK AND ITS DIRECTORS, EMPLOYEES, PARTNERS, AGENTS, SUPPLIERS, OR AFFILIATES SHALL NOT BE LIABLE FOR ANY INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL, OR PUNITIVE DAMAGES, INCLUDING WITHOUT LIMITATION LOSS OF PROFITS, DATA, USE, GOODWILL, OR OTHER INTANGIBLE LOSSES, RESULTING FROM: (I) YOUR USE OF OR INABILITY TO USE THE SERVICE; (II) ANY CONDUCT OR CONTENT OF ANY THIRD PARTY ON THE SERVICE; (III) ANY CONTENT OBTAINED FROM THE SERVICE; OR (IV) UNAUTHORISED ACCESS, USE, OR ALTERATION OF YOUR TRANSMISSIONS OR CONTENT.</p>
+            <p className="text-slate-500">TO THE FULLEST EXTENT PERMITTED BY LAW, VIBELINK AND ITS DIRECTORS, EMPLOYEES, PARTNERS, AGENTS, SUPPLIERS, OR AFFILIATES SHALL NOT BE LIABLE FOR ANY INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL, OR PUNITIVE DAMAGES, INCLUDING WITHOUT LIMITATION LOSS OF PROFITS, DATA, USE, GOODWILL, OR OTHER INTANGIBLE LOSSES.</p>
           </Section>
 
           <Section title="12. Indemnification">
@@ -91,53 +80,35 @@ export default function TermsPage() {
           </Section>
 
           <Section title="13. Third-Party Links and Services">
-            <p>The Service may contain links to third-party websites or services that are not owned or controlled by VibeLink. We have no control over, and assume no responsibility for, the content, privacy policies, or practices of any third-party websites or services. We encourage you to review the terms and privacy policies of any third-party sites you visit.</p>
+            <p>The Service may contain links to third-party websites or services that are not owned or controlled by VibeLink. We have no control over, and assume no responsibility for, the content, privacy policies, or practices of any third-party websites or services.</p>
           </Section>
 
           <Section title="14. Governing Law and Dispute Resolution">
-            <p>These Terms shall be governed by and construed in accordance with applicable law. Any disputes arising under or in connection with these Terms shall first be subject to good-faith negotiation. If the dispute cannot be resolved by negotiation, it shall be submitted to binding arbitration in accordance with the applicable rules before any court proceedings are initiated.</p>
+            <p>These Terms shall be governed by and construed in accordance with applicable law. Any disputes arising under or in connection with these Terms shall first be subject to good-faith negotiation. If the dispute cannot be resolved by negotiation, it shall be submitted to binding arbitration.</p>
           </Section>
 
           <Section title="15. Severability">
-            <p>If any provision of these Terms is held to be invalid, illegal, or unenforceable, the remaining provisions shall continue in full force and effect. The invalid or unenforceable provision shall be modified to the minimum extent necessary to make it valid, legal, and enforceable.</p>
+            <p>If any provision of these Terms is held to be invalid, illegal, or unenforceable, the remaining provisions shall continue in full force and effect.</p>
           </Section>
 
           <Section title="16. Entire Agreement">
-            <p>These Terms, together with our Privacy Policy and any other agreements expressly incorporated by reference, constitute the entire agreement between you and VibeLink concerning the Service and supersede all prior and contemporaneous understandings, agreements, representations, and warranties.</p>
+            <p>These Terms, together with our Privacy Policy and any other agreements expressly incorporated by reference, constitute the entire agreement between you and VibeLink concerning the Service.</p>
           </Section>
 
           <Section title="17. Contact Us">
-            <p>If you have any questions about these Terms, please <Link href="/contact" className="text-violet-600 hover:underline">contact us</Link> through our enquiry form.</p>
+            <p>If you have any questions about these Terms, please <Link href="/contact" className="text-violet-400 hover:text-violet-300 underline transition-colors">contact us</Link> through our enquiry form.</p>
           </Section>
-
         </div>
-      </main>
-
-      <Footer />
-    </div>
+      </div>
+    </PageShell>
   );
 }
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div>
-      <h2 className="text-base font-bold text-slate-900 dark:text-white mb-3">{title}</h2>
+    <div className="bg-slate-50 dark:bg-white/3 border border-slate-100 dark:border-white/6 rounded-2xl p-6">
+      <h2 className="font-heading text-sm font-semibold text-slate-900 dark:text-white mb-3">{title}</h2>
       {children}
     </div>
-  );
-}
-
-function Footer() {
-  return (
-    <footer className="border-t border-slate-100 dark:border-slate-800 mt-16 py-8 px-6">
-      <div className="max-w-3xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
-        <p className="text-xs text-slate-400">&copy; {new Date().getFullYear()} VibeLink. All rights reserved.</p>
-        <div className="flex gap-5 text-xs text-slate-400">
-          <Link href="/terms" className="hover:text-violet-600 transition-colors">Terms and Conditions</Link>
-          <Link href="/privacy" className="hover:text-violet-600 transition-colors">Privacy Policy</Link>
-          <Link href="/contact" className="hover:text-violet-600 transition-colors">Get in Touch</Link>
-        </div>
-      </div>
-    </footer>
   );
 }

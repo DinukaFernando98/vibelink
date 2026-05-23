@@ -4,7 +4,9 @@ import { useEffect, useState, useCallback } from 'react';
 import {
   Users, Flag, BarChart2, LogOut, RefreshCw, Trash2,
   ShieldOff, Shield, Loader2, Activity, Wifi, Clock, AlertTriangle, Mail, CheckCircle, Circle,
+  ChevronDown, ChevronRight, Ban, Eye, MessageSquare, Camera,
 } from 'lucide-react';
+import { REPORT_CATEGORIES } from '@/components/ui/ReportModal';
 
 const API = () => process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:3001';
 const TOKEN_KEY = 'vl_admin_token';
@@ -21,7 +23,15 @@ interface DBUser {
   created_at: number; last_seen: number | null; is_banned: number;
 }
 interface Report {
-  id: string; reporter_socket: string; reported_socket: string;
+  id: string;
+  reporter_socket: string; reported_socket: string;
+  reporter_user_id: string | null; reported_user_id: string | null;
+  reporter_name: string | null; reported_name: string | null; reported_email: string | null;
+  category: string; description: string | null;
+  screenshot: string | null; chat_log: string | null;
+  auto_action: string | null; status: string;
+  reviewer_note: string | null; reviewed_at: number | null;
+  reported_is_banned: number; risk_score: number;
   reason: string; created_at: number;
 }
 interface Enquiry {
@@ -39,10 +49,13 @@ function fmtUptime(s: number) {
 }
 
 export default function AdminDashboard() {
-  const [token,     setToken]     = useState<string | null>(null);
-  const [tab,       setTab]       = useState<Tab>('overview');
-  const [stats,     setStats]     = useState<Stats | null>(null);
-  const [users,     setUsers]     = useState<DBUser[]>([]);
+  const [token,       setToken]      = useState<string | null>(null);
+  const [tab,         setTab]        = useState<Tab>('overview');
+  const [stats,       setStats]      = useState<Stats | null>(null);
+  const [users,       setUsers]      = useState<DBUser[]>([]);
+  const [reportFilter, setReportFilter] = useState<'all'|'pending'|'actioned'|'dismissed'>('pending');
+  const [expandedReport, setExpandedReport] = useState<string | null>(null);
+  const [noteInputs, setNoteInputs] = useState<Record<string, string>>({});
   const [reports,   setReports]   = useState<Report[]>([]);
   const [enquiries, setEnquiries] = useState<Enquiry[]>([]);
   const [loading,   setLoading]   = useState(false);
@@ -82,15 +95,24 @@ export default function AdminDashboard() {
     setLoading(false);
   }, [token, authHeader]);
 
-  const loadReports = useCallback(async () => {
+  const loadReports = useCallback(async (status = reportFilter) => {
     if (!token) return;
     setLoading(true);
     try {
-      const r = await fetch(`${API()}/api/admin/reports`, { headers: authHeader() });
+      const r = await fetch(`${API()}/api/admin/reports?status=${status}&limit=100`, { headers: authHeader() });
       if (r.ok) { const d = await r.json(); setReports(d.reports); }
     } catch { /* ignore */ }
     setLoading(false);
-  }, [token, authHeader]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token, authHeader, reportFilter]);
+
+  const actionReport = useCallback(async (reportId: string, action: string, note?: string) => {
+    await fetch(`${API()}/api/admin/reports/${reportId}/action`, {
+      method: 'POST', headers: authHeader(),
+      body: JSON.stringify({ action, note }),
+    });
+    loadReports();
+  }, [authHeader, loadReports]);
 
   const loadEnquiries = useCallback(async () => {
     if (!token) return;
@@ -333,45 +355,152 @@ export default function AdminDashboard() {
         {/* ── Reports ── */}
         {tab === 'reports' && (
           <div>
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-base font-semibold text-slate-800">User reports</h2>
-              <button onClick={loadReports} className="text-xs text-violet-600 hover:underline cursor-pointer">Refresh</button>
+            {/* Toolbar */}
+            <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+              <div className="flex items-center gap-1.5">
+                {(['pending','actioned','dismissed','all'] as const).map(f => (
+                  <button key={f} onClick={() => { setReportFilter(f); loadReports(f); }}
+                    className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors cursor-pointer ${reportFilter === f ? 'bg-violet-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
+                    {f.charAt(0).toUpperCase() + f.slice(1)}
+                    {f === 'pending' && stats && stats.totalReports > 0 && <span className="ml-1.5 bg-red-500 text-white text-[10px] px-1.5 py-0.5 rounded-full">{stats.totalReports}</span>}
+                  </button>
+                ))}
+              </div>
+              <button onClick={() => loadReports()} className="text-xs text-violet-600 hover:underline cursor-pointer flex items-center gap-1">
+                <RefreshCw className="w-3 h-3" />Refresh
+              </button>
             </div>
-            {loading
-              ? <Spinner />
-              : reports.length === 0
-              ? <Empty text="No reports yet." />
-              : (
-                <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="border-b border-slate-100 bg-slate-50">
-                          {['Reporter socket', 'Reported socket', 'Reason', 'Date'].map(h => (
-                            <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">{h}</th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100">
-                        {reports.map((r) => (
-                          <tr key={r.id} className="hover:bg-slate-50">
-                            <td className="px-4 py-3 font-mono text-xs text-slate-500">{r.reporter_socket.slice(0,12)}…</td>
-                            <td className="px-4 py-3 font-mono text-xs text-slate-500">{r.reported_socket.slice(0,12)}…</td>
-                            <td className="px-4 py-3">
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-red-50 text-red-700 rounded-full text-xs font-medium">
-                                <AlertTriangle className="w-3 h-3" />
-                                {r.reason}
+
+            {loading ? <Spinner /> : reports.length === 0 ? <Empty text="No reports in this category." /> : (
+              <div className="flex flex-col gap-3">
+                {reports.map(r => {
+                  const cat      = REPORT_CATEGORIES.find(c => c.id === r.category) ?? REPORT_CATEGORIES[REPORT_CATEGORIES.length - 1];
+                  const isOpen   = expandedReport === r.id;
+                  const chatLog  = r.chat_log ? (typeof r.chat_log === 'string' ? JSON.parse(r.chat_log) : r.chat_log) as string[] : [];
+                  return (
+                    <div key={r.id} className={`bg-white rounded-2xl border overflow-hidden ${r.status === 'pending' ? 'border-orange-200' : r.status === 'actioned' ? 'border-red-200' : 'border-slate-200'}`}>
+                      {/* Summary row */}
+                      <div className="flex items-start gap-3 p-4">
+                        {/* Screenshot thumbnail */}
+                        <div className="w-16 h-12 rounded-lg overflow-hidden bg-slate-100 flex items-center justify-center shrink-0 border border-slate-200">
+                          {r.screenshot
+                            ? <img src={r.screenshot} alt="screenshot" className="w-full h-full object-cover cursor-pointer" onClick={() => window.open(r.screenshot!, '_blank')} />
+                            : <Camera className="w-5 h-5 text-slate-300" />}
+                        </div>
+
+                        {/* Main info */}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex flex-wrap items-center gap-2 mb-1">
+                            {/* Category badge */}
+                            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold border ${cat.bg} ${cat.color}`}>
+                              <AlertTriangle className="w-3 h-3" />{cat.label}
+                            </span>
+                            {/* Status */}
+                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide ${
+                              r.status === 'pending' ? 'bg-orange-100 text-orange-700' :
+                              r.status === 'actioned' ? 'bg-red-100 text-red-700' :
+                              'bg-slate-100 text-slate-500'
+                            }`}>{r.status}</span>
+                            {/* Auto-action badge */}
+                            {r.auto_action && (
+                              <span className="px-2 py-0.5 rounded-full text-[10px] bg-purple-100 text-purple-700 font-semibold">
+                                Auto: {r.auto_action.replace(/_/g,' ')}
                               </span>
-                            </td>
-                            <td className="px-4 py-3 text-xs text-slate-400 whitespace-nowrap">{fmt(r.created_at)}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              )
-            }
+                            )}
+                          </div>
+
+                          <div className="flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-slate-500">
+                            <span><strong className="text-slate-700">Reported:</strong> {r.reported_name ?? r.reported_socket?.slice(0,10) ?? '—'}{r.reported_email ? ` <${r.reported_email}>` : ''}</span>
+                            <span><strong className="text-slate-700">Reporter:</strong> {r.reporter_name ?? r.reporter_socket?.slice(0,10) ?? '—'}</span>
+                            <span>{fmt(r.created_at)}</span>
+                            {r.risk_score > 0 && <span className="text-orange-600 font-semibold">Risk: {r.risk_score}</span>}
+                          </div>
+
+                          {r.description && <p className="text-xs text-slate-600 mt-1 italic">&ldquo;{r.description}&rdquo;</p>}
+                        </div>
+
+                        {/* Expand toggle */}
+                        <button onClick={() => setExpandedReport(isOpen ? null : r.id)}
+                          className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 cursor-pointer shrink-0">
+                          {isOpen ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                        </button>
+                      </div>
+
+                      {/* Expanded detail */}
+                      {isOpen && (
+                        <div className="border-t border-slate-100 p-4 flex flex-col gap-4">
+                          {/* Chat log */}
+                          {chatLog.length > 0 && (
+                            <div>
+                              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2 flex items-center gap-1.5">
+                                <MessageSquare className="w-3.5 h-3.5" />Chat log ({chatLog.length} messages)
+                              </p>
+                              <div className="bg-slate-50 rounded-xl p-3 max-h-48 overflow-y-auto flex flex-col gap-1">
+                                {chatLog.map((line, i) => (
+                                  <p key={i} className={`text-xs ${line.startsWith('[You]') ? 'text-violet-700' : 'text-slate-600'}`}>{line}</p>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Screenshot full */}
+                          {r.screenshot && (
+                            <div>
+                              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2 flex items-center gap-1.5">
+                                <Eye className="w-3.5 h-3.5" />Screenshot at time of report
+                              </p>
+                              <img src={r.screenshot} alt="report screenshot" className="rounded-xl max-h-64 object-contain border border-slate-200 cursor-pointer" onClick={() => window.open(r.screenshot!, '_blank')} />
+                            </div>
+                          )}
+
+                          {/* Reviewer note input */}
+                          <div>
+                            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Moderator note</p>
+                            <textarea
+                              rows={2} placeholder="Add an internal note…"
+                              value={noteInputs[r.id] ?? r.reviewer_note ?? ''}
+                              onChange={e => setNoteInputs(p => ({ ...p, [r.id]: e.target.value }))}
+                              className="w-full px-3 py-2 text-sm rounded-xl border border-slate-200 bg-slate-50 focus:outline-none focus:border-violet-400 resize-none"
+                            />
+                          </div>
+
+                          {/* Action buttons */}
+                          <div className="flex flex-wrap gap-2">
+                            {r.reported_user_id && !r.reported_is_banned && (
+                              <button onClick={() => actionReport(r.id, 'ban', noteInputs[r.id])}
+                                className="flex items-center gap-1.5 px-3 py-1.5 bg-red-600 hover:bg-red-500 text-white text-xs font-semibold rounded-lg cursor-pointer transition-colors">
+                                <Ban className="w-3.5 h-3.5" />Permanent ban
+                              </button>
+                            )}
+                            {r.reported_user_id && !r.reported_is_banned && (
+                              <button onClick={() => actionReport(r.id, 'temp_ban_24h', noteInputs[r.id])}
+                                className="flex items-center gap-1.5 px-3 py-1.5 bg-orange-500 hover:bg-orange-400 text-white text-xs font-semibold rounded-lg cursor-pointer transition-colors">
+                                <Clock className="w-3.5 h-3.5" />Ban 24h
+                              </button>
+                            )}
+                            {r.reported_user_id && !!r.reported_is_banned && (
+                              <button onClick={() => actionReport(r.id, 'unban', noteInputs[r.id])}
+                                className="flex items-center gap-1.5 px-3 py-1.5 bg-green-600 hover:bg-green-500 text-white text-xs font-semibold rounded-lg cursor-pointer transition-colors">
+                                <Shield className="w-3.5 h-3.5" />Unban user
+                              </button>
+                            )}
+                            <button onClick={() => actionReport(r.id, 'ignore', noteInputs[r.id])}
+                              className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs font-semibold rounded-lg cursor-pointer transition-colors">
+                              <CheckCircle className="w-3.5 h-3.5" />Dismiss
+                            </button>
+                            <button onClick={() => actionReport(r.id, 'false_report', noteInputs[r.id])}
+                              className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-semibold rounded-lg cursor-pointer transition-colors">
+                              False report
+                            </button>
+                          </div>
+                          {r.reviewed_at && <p className="text-[11px] text-slate-400">Reviewed {fmt(r.reviewed_at)}</p>}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         )}
 

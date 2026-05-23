@@ -84,3 +84,14 @@ export async function apiToggleActiveStatus(isActive: boolean): Promise<void> {
   });
   if (!res.ok) throw new Error('Failed to update active status');
 }
+
+export async function apiFriendReport(
+  friendId: string,
+  payload: { category: string; description?: string; screenshot?: string | null; chatLog?: string[] },
+): Promise<void> {
+  const res = await fetch(`${API()}/api/friends/${friendId}/report`, {
+    method: 'POST', headers: authHeaders(), body: JSON.stringify(payload),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Failed to submit report');
+}
